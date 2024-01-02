@@ -18,9 +18,21 @@
 #include "driver/gpio.h"
 #include "tinyusb.h"
 #include "tusb_msc_storage.h"
+#include "tusb_cdc_acm.h"
+#include "linenoise/linenoise.h"
+#include "argtable3/argtable3.h"
+#include "esp_vfs_cdcacm.h"
+#include "esp_err.h"
+#include "esp_vfs.h"
+#include "esp_vfs_common.h"
+#include <fcntl.h>
+#include "tusb_console.h"
 #include "diskio_impl.h"
 #include "diskio_sdmmc.h"
+#include <stdio.h>
+#include <string.h>
 
+#include "graphic_driver.h"
 
 static const char *TAG = "datalogger";
 
@@ -42,38 +54,6 @@ enum {
     EDPT_MSC_IN   = 0x81,
 };
 
-static uint8_t const desc_configuration[] = {
-    // Config number, interface count, string index, total length, attribute, power in mA
-    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, TUSB_DESC_TOTAL_LEN, TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
-
-    // Interface number, string index, EP Out & EP In address, EP size
-    TUD_MSC_DESCRIPTOR(ITF_NUM_MSC, 0, EDPT_MSC_OUT, EDPT_MSC_IN, TUD_OPT_HIGH_SPEED ? 512 : 64),
-};
-
-static tusb_desc_device_t descriptor_config = {
-    .bLength = sizeof(descriptor_config),
-    .bDescriptorType = TUSB_DESC_DEVICE,
-    .bcdUSB = 0x0200,
-    .bDeviceClass = TUSB_CLASS_MISC,
-    .bDeviceSubClass = MISC_SUBCLASS_COMMON,
-    .bDeviceProtocol = MISC_PROTOCOL_IAD,
-    .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
-    .idVendor = 0x303A, // This is Espressif VID. This needs to be changed according to Users / Customers
-    .idProduct = 0x4002,
-    .bcdDevice = 0x100,
-    .iManufacturer = 0x01,
-    .iProduct = 0x02,
-    .iSerialNumber = 0x03,
-    .bNumConfigurations = 0x01
-};
-
-static char const *string_desc_arr[] = {
-    (const char[]) { 0x09, 0x04 },  // 0: is supported language is English (0x0409)
-    "TinyUSB",                      // 1: Manufacturer
-    "TinyUSB Device",               // 2: Product
-    "123456",                       // 3: Serials
-    "Example MSC",                  // 4. MSC
-};
 /*********************************************************************** TinyUSB descriptors*/
 
 #define BASE_PATH "/data" // base path to mount the partition
@@ -123,6 +103,50 @@ const esp_console_cmd_t cmds[] = {
         .func = &console_exit,
     }
 };
+
+
+static uint8_t buf[CONFIG_TINYUSB_CDC_RX_BUFSIZE + 1];
+static uint8_t  hiii[] = "\nhiii->";
+
+void tinyusb_cdc_rx_callback(int itf, cdcacm_event_t *event)
+{
+    switch (event->type)
+    {
+            case CDC_EVENT_RX:
+                size_t rx_size = 0;
+
+                /* read */
+                esp_err_t ret = tinyusb_cdcacm_read(itf, buf, CONFIG_TINYUSB_CDC_RX_BUFSIZE, &rx_size);
+                if (ret == ESP_OK) {
+                    ESP_LOGI(TAG, "Data from channel %d:", itf);
+                    ESP_LOG_BUFFER_HEXDUMP(TAG, buf, rx_size, ESP_LOG_INFO);
+                } else {
+                    ESP_LOGE(TAG, "Read error");
+                }
+
+                /* write back */
+                tinyusb_cdcacm_write_queue(itf, hiii, strlen((char *)hiii));
+                tinyusb_cdcacm_write_queue(itf, buf, rx_size);
+                tinyusb_cdcacm_write_flush(itf, 0);
+                break;
+            case CDC_EVENT_RX_WANTED_CHAR:
+                ESP_LOGI(TAG, "Received wanted char '%c'",
+                    event->rx_wanted_char_data.wanted_char);
+                break;
+            default:
+                break;
+    }
+}
+
+
+void tinyusb_cdc_line_state_changed_callback(int itf, cdcacm_event_t *event)
+{
+    int dtr = event->line_state_changed_data.dtr;
+    int rts = event->line_state_changed_data.rts;
+    ESP_LOGI(TAG, "Line state changed on channel %d: DTR:%d, RTS:%d", itf, dtr, rts);
+}
+
+
 //tusb_msc_storage.c
 //  const MKFS_PARM opt = {(BYTE)!!!FM_ANY!!!!, 0, 0, 0, alloc_unit_size};
 // mount the partition and show all the files in BASE_PATH
@@ -316,13 +340,14 @@ clean:
     }
     return ret;
 }
-#endif  // CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
 
 void app_main(void)
 {
 
     gpio_set_direction(2, GPIO_MODE_OUTPUT);
     gpio_set_level(2, 1);
+
+    xTaskCreatePinnedToCore(graphic_driver_main_task, "gui", 4096*2, NULL, 0, NULL, 1);
 
     ESP_LOGI(TAG, "Initializing storage...");
 
@@ -337,31 +362,51 @@ void app_main(void)
     //mounted in the app by default
     _mount();
 
-    ESP_LOGI(TAG, "USB MSC initialization");
+    ESP_LOGI(TAG, "USB Composite initialization");
     const tinyusb_config_t tusb_cfg = {
-        .device_descriptor = &descriptor_config,
-        .string_descriptor = string_desc_arr,
-        .string_descriptor_count = sizeof(string_desc_arr) / sizeof(string_desc_arr[0]),
+        .device_descriptor = NULL,
+        .string_descriptor = NULL,
+        .string_descriptor_count = 0,
         .external_phy = false,
-        .configuration_descriptor = desc_configuration,
+        .configuration_descriptor = NULL,
         .self_powered = true,
         .vbus_monitor_io = 8
     };
-    ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
-    ESP_LOGI(TAG, "USB MSC initialization DONE");
 
+    ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
+
+    tinyusb_config_cdcacm_t acm_cfg = {
+        .usb_dev = TINYUSB_USBDEV_0,
+        .cdc_port = TINYUSB_CDC_ACM_0,
+//        .rx_unread_buf_sz = 64,
+        .callback_rx = &tinyusb_cdc_rx_callback, // the first way to register a callback
+        .callback_rx_wanted_char = &tinyusb_cdc_rx_callback,
+//        .callback_line_state_changed = NULL,
+//        .callback_line_coding_changed = NULL
+    };
+
+    ESP_ERROR_CHECK(tusb_cdc_acm_init(&acm_cfg));
+
+
+    ESP_LOGI(TAG, "USB Composite initialization DONE");
+    //esp_tusb_init_console(TINYUSB_CDC_ACM_0); // log to usb
+
+
+    //initialize_console();
     esp_console_repl_t *repl = NULL;
-    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    /* Prompt to be printed before each line.
-     * This can be customized, made dynamic, etc.
-     */
+       esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+    esp_console_register_help_command();
     repl_config.prompt = PROMPT_STR ">";
     repl_config.max_cmdline_length = 64;
-    esp_console_register_help_command();
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
+//    esp_console_dev_usb_cdc_config_t hw_config = ESP_CONSOLE_DEV_CDC_CONFIG_DEFAULT();
+//     ESP_ERROR_CHECK(esp_console_new_repl_usb_cdc(&hw_config, &repl_config, &repl));
+//
     for (int count = 0; count < sizeof(cmds) / sizeof(esp_console_cmd_t); count++) {
         ESP_ERROR_CHECK( esp_console_cmd_register(&cmds[count]) );
     }
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
+
+
 }

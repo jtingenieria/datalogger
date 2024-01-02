@@ -1,9 +1,6 @@
 set(srcs "main.c")
-set(requires fatfs console)
-
-if(CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH)
-    list(APPEND requires wear_levelling)
-endif()
+set(requires fatfs console vfs graphic_driver lvgl 
+                       lvgl_esp32_drivers)
 
 idf_component_register(
     SRCS "${srcs}"
