@@ -88,6 +88,15 @@ static void my_timer(lv_timer_t * timer)
     }
 }
 
+void graphic_driver_show_text(char * text)
+{
+    lv_obj_clean(lv_scr_act());
+    lv_obj_t * label1 = lv_label_create(lv_scr_act());
+    lv_label_set_long_mode(label1, LV_LABEL_LONG_WRAP);     /*Break the long lines*/
+    lv_label_set_text(label1, text);
+    lv_obj_set_style_text_align(label1, LV_TEXT_ALIGN_CENTER, 0);
+}
+
 void graphic_driver_main_task(void *pvParameter)
 {
 

@@ -27,5 +27,6 @@ void flash_screen_event_handler(lv_event_t * e);
 void graphic_driver_init(void);
 void graphic_driver_usb_connected(void);
 
+void graphic_driver_show_text(char * text);
 
 #endif /* MAIN_GRAPHIC_DRIVER_H_ */
