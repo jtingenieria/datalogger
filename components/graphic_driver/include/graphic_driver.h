@@ -24,5 +24,8 @@ void graphic_driver_main_task(void *pvParameter);
 void main_screen_event_handler(lv_event_t * e);
 void flash_screen_event_handler(lv_event_t * e);
 
+void graphic_driver_init(void);
+void graphic_driver_usb_connected(void);
+
 
 #endif /* MAIN_GRAPHIC_DRIVER_H_ */

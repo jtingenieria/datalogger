@@ -57,7 +57,9 @@ lv_obj_t *ui_flash_screen_obj = NULL;
 
 
 extern const lv_img_dsc_t intro_logo;
+extern const lv_img_dsc_t usb_icon;
 
+static bool usb_is_connected = false;
 
 void indev_group()
 {
@@ -79,6 +81,11 @@ static void my_timer(lv_timer_t * timer)
 {
     ESP_LOGI(TAG, "Timerr");
     lv_obj_clean(lv_scr_act());
+    if(usb_is_connected)
+    {
+        lv_obj_t * icon = lv_img_create(lv_scr_act());
+        lv_img_set_src(icon, &usb_icon);
+    }
 }
 
 void graphic_driver_main_task(void *pvParameter)
@@ -193,4 +200,12 @@ void graphic_driver_main_task(void *pvParameter)
     vTaskDelete(NULL);
 }
 
+void graphic_driver_init(void)
+{
+    xTaskCreatePinnedToCore(graphic_driver_main_task, "gui", 4096*2, NULL, 0, NULL, 1);
+}
 
+void graphic_driver_usb_connected(void)
+{
+    usb_is_connected = true;
+}

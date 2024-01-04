@@ -1,4 +1,4 @@
-idf_component_register(SRCS "graphic_driver.c" "lv_app_helper_functions.c"
+idf_component_register(SRCS "graphic_driver.c" "lv_app_helper_functions.c" "usb_icon.c"
 					"lv_roller_file_explorer.c" 
 					"intro_logo.c"
                     INCLUDE_DIRS "include"
