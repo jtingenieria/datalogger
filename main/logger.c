@@ -18,6 +18,7 @@
 
 #include "ds18b20_manager.h"
 #include "usb_sd_fs.h"
+#include "serial_logger.h"
 
 static const char * TAG = "logger";
 
@@ -25,7 +26,7 @@ TaskHandle_t logger_task_handle = NULL;
 TaskHandle_t external_task_handle = NULL;
 
 #define GPIO_S1_STRING 9
-#define MAX_DEVICES_S1_STRING 5
+#define MAX_DEVICES_S1_STRING 14
 static int assigned_number_S1;
 
 static void logger_task(void *pvParams)
@@ -38,7 +39,7 @@ static void logger_task(void *pvParams)
     ESP_LOGD(TAG, "Task done wait");
 
     char data_line[256];
-    char data[40];
+    char data[40], data2[20];
     float sensor_data = 0;
     time_t now = 0;
     struct tm timeinfo =
@@ -62,6 +63,42 @@ static void logger_task(void *pvParams)
         ESP_LOGD(TAG, "Sensor %d: %.2f",i,sensor_data);
 
     }
+
+    serial_packet_t * packet;
+    serial_logger_get_data(1000, &packet);
+    memset(data, 0, sizeof(data));
+    memset(data2, 0, sizeof(data2));
+    ESP_LOGI(TAG, "memsets ok");
+    if(packet->id != -1)
+    {
+        for(int i = 0; i < packet->received_data_qty; i++)
+        {
+            sprintf(data2,", %.2f", packet->float_data_p[i] );
+            strcat(data, data2);
+        }
+
+        for(int i = 0; i < (packet->float_data_qty - packet->received_data_qty); i++)
+        {
+            sprintf(data2,", %.2f", -255.0);
+            strcat(data, data2);
+        }
+        strcat(data, "\r\n");
+    }
+    else
+    {
+        ESP_LOGI(TAG, "-1. qty = %d", packet->float_data_qty);
+        for(int j = 0; j < packet->float_data_qty; j++)
+        {
+            sprintf(data2,", %.2f", -255.0);
+            strcat(data, data2);
+        }
+
+        strcat(data, "\r\n");
+        ESP_LOGI(TAG, "-1 done");
+    }
+    strcat(data_line, data);
+    ESP_LOGI(TAG, "before free");
+    free(packet);
     ESP_LOGI(TAG, "%s", data_line);
     strcat(data_line, "\n");
 
@@ -102,7 +139,7 @@ void logger_init(void)
 
     ds18b20_manager_init_string(assigned_number_S1);
 
-
+    serial_logger_init(5);
 
 }
 

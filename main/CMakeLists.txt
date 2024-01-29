@@ -10,7 +10,8 @@ set(requires vfs
 	        esp_event
 	        esp_wifi
 	        lwip
-	        nvs_flash)
+	        nvs_flash
+	        serial_logger)
 
 idf_component_register(
     SRCS "${srcs}"
