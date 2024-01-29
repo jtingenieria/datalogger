@@ -3,6 +3,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_check.h"
 #include "onewire_bus.h"
@@ -29,11 +30,34 @@ typedef struct
 
 static ds18b20_string sensor_string[DS18B20_MANAGER_MAX_STRINGS];
 static int sensor_string_count = 0;
-static TaskHandle_t _task_to_block;
+static TaskHandle_t * _task_to_block;
+static TaskHandle_t ds18b20_manager_task_handle;
+static SemaphoreHandle_t sensor_strings_semaphore;
 
-ds18b20_manager_err_t ds18b20_manager_init(TaskHandle_t task_to_block)
+static void ds18b20_manager_task(void * params);
+
+ds18b20_manager_err_t ds18b20_manager_init(TaskHandle_t * task_to_block)
 {
+    //esp_log_level_set(TAG, ESP_LOG_DEBUG);
+
     _task_to_block = task_to_block;
+
+    sensor_strings_semaphore = xSemaphoreCreateBinary();
+
+    xSemaphoreGive(sensor_strings_semaphore);
+
+    if(sensor_strings_semaphore == NULL)
+    {
+        return DS18B20_MANAGER_ERR_NOT_CREATED;
+    }
+
+    xTaskCreate(ds18b20_manager_task, "ds_mgr_task", 4096, NULL, 3, &ds18b20_manager_task_handle);
+
+    if(ds18b20_manager_task_handle == NULL)
+    {
+        return DS18B20_MANAGER_ERR_NOT_CREATED;
+    }
+
     return DS18B20_MANAGER_ERR_OK;
 }
 
@@ -44,32 +68,60 @@ ds18b20_manager_err_t ds18b20_manager_instance_string(int gpio_number,
 
     if (sensor_string_count == DS18B20_MANAGER_MAX_STRINGS)
     {
+        ESP_LOGE(TAG, "No more strings available");
         return DS18B20_MANAGER_ERR_NO_MORE_STRING_AVAILABLE;
     }
 
     if (max_devices > DS18B20_MANAGER_MAX_DEVICES_PER_STRING)
     {
+        ESP_LOGE(TAG, "Too many devices");
         return DS18B20_MANAGER_ERR_EXCESS_OF_DEVICES;
     }
 
-    sensor_string[sensor_string_count].string_number = sensor_string_count;
-    sensor_string[sensor_string_count].gpio_number = gpio_number;
-    sensor_string[sensor_string_count].max_devices = max_devices;
-    sensor_string[sensor_string_count].measured_temp = malloc(sizeof(float) * max_devices);
-    sensor_string[sensor_string_count].ds18b20s = malloc(sizeof(ds18b20_device_handle_t) * max_devices);
-    sensor_string[sensor_string_count].address_map = malloc(sizeof(onewire_device_address_t) * max_devices);
-
-    if (sensor_string[sensor_string_count].ds18b20s == NULL || sensor_string[sensor_string_count].address_map == NULL || sensor_string[sensor_string_count].measured_temp == NULL)
+    if( xSemaphoreTake( sensor_strings_semaphore, pdMS_TO_TICKS(2500) ) == pdTRUE )
     {
-        return DS18B20_MANAGER_ERR_INSUFFICIENT_MEMORY;
+        sensor_string[sensor_string_count].string_number = sensor_string_count;
+        sensor_string[sensor_string_count].gpio_number = gpio_number;
+        sensor_string[sensor_string_count].max_devices = max_devices;
+        sensor_string[sensor_string_count].measured_temp = malloc(sizeof(float) * max_devices);
+        sensor_string[sensor_string_count].ds18b20s = malloc(sizeof(ds18b20_device_handle_t) * max_devices);
+        sensor_string[sensor_string_count].address_map = malloc(sizeof(onewire_device_address_t) * max_devices);
+
+        ESP_LOGD(TAG, "mallocs done");
+
+        if (sensor_string[sensor_string_count].ds18b20s == NULL || sensor_string[sensor_string_count].address_map == NULL || sensor_string[sensor_string_count].measured_temp == NULL)
+        {
+            ESP_LOGE(TAG, "INSUFFICIENT_MEMORY");
+            xSemaphoreGive(sensor_strings_semaphore);
+            return DS18B20_MANAGER_ERR_INSUFFICIENT_MEMORY;
+        }
+
+        memset(sensor_string[sensor_string_count].measured_temp, 0, sizeof(float) * max_devices);
+        memset(sensor_string[sensor_string_count].ds18b20s, 0, sizeof(ds18b20_device_handle_t) * max_devices);
+        memset(sensor_string[sensor_string_count].address_map, 0, sizeof(onewire_device_address_t) * max_devices);
+
+        ESP_LOGD(TAG, "memsets done");
+
+        if (string_number != NULL)
+        {
+            *string_number = sensor_string_count;
+        }
+        sensor_string_count++;
+
+        xSemaphoreGive(sensor_strings_semaphore);
+
+        ESP_LOGI(TAG, "Instance %d ok", sensor_string_count-1);
+
+        return DS18B20_MANAGER_ERR_OK;
     }
 
-    if (string_number != NULL)
+    else
     {
-        *string_number = sensor_string_count;
+        ESP_LOGE(TAG, "Semaphore not taken");
+        return DS18B20_MANAGER_ERR_NOT_CREATED;
     }
-    sensor_string_count++;
-    return DS18B20_MANAGER_ERR_OK;
+
+
 }
 
 ds18b20_manager_err_t ds18b20_manager_init_string(int string_number)
@@ -167,47 +219,69 @@ ds18b20_manager_err_t ds18b20_manager_init_string(int string_number)
 //
 //    }
 
+    xTaskNotifyIndexed(ds18b20_manager_task_handle, 0, 0, eSetValueWithOverwrite);
+
     return DS18B20_MANAGER_ERR_OK;
 }
 
 
-void ds18b20_manager_task(void * params)
+static void ds18b20_manager_task(void * params)
 {
 
     float temperature = 0;
 
+    ulTaskNotifyTakeIndexed(0, pdTRUE, portMAX_DELAY);
+
+    ESP_LOGD(TAG, "Task enabled");
+
     for(;;)
     {
-        for(int j = 0; j < sensor_string_count ; j++)
+        ESP_LOGD(TAG, "Start semaphore wait");
+        if( xSemaphoreTake( sensor_strings_semaphore, portMAX_DELAY ) == pdTRUE )
         {
-            if(sensor_string[j].ds18b20s[0] == NULL) continue;
-            ds18b20_trigger_temperature_conversion_for_all(sensor_string[j].ds18b20s[0]);
+            for(int j = 0; j < sensor_string_count ; j++)
+            {
+                if(sensor_string[j].ds18b20s[0] == NULL) continue;
+                ds18b20_trigger_temperature_conversion_for_all(sensor_string[j].ds18b20s[0]);
+            }
+            ESP_LOGI(TAG, "Triggered conversions");
+            xSemaphoreGive(sensor_strings_semaphore);
         }
-        ESP_LOGI(TAG, "Triggered conversions");
 
         vTaskDelay(pdMS_TO_TICKS(800));
-
-        for (int j = 0; j < sensor_string_count; j++)
+        ESP_LOGD(TAG, "Start semaphore wait 2");
+        if( xSemaphoreTake( sensor_strings_semaphore, portMAX_DELAY ) == pdTRUE )
         {
-            for (int i = 0; i < sensor_string[j].detected_devices; i++)
+            for (int j = 0; j < sensor_string_count; j++)
             {
-                esp_err_t err = ESP_OK;
-
-                err = ds18b20_get_temperature(  sensor_string[j].ds18b20s[i],
-                                                &temperature);
-
-                if (err != ESP_OK)
+                for (int i = 0; i < sensor_string[j].detected_devices; i++)
                 {
-                    ESP_LOGE(TAG, "Error in get_temperature %d", err);
-                    if (sensor_string[j].ds18b20s[i]->user_id != -1) sensor_string[j].measured_temp[sensor_string[j].ds18b20s[i]->user_id] = -254;
-                }
+                    esp_err_t err = ESP_OK;
 
-                else if (sensor_string[j].ds18b20s[i]->user_id != -1) sensor_string[j].measured_temp[sensor_string[j].ds18b20s[i]->user_id] = temperature;
+                    err = ds18b20_get_temperature(  sensor_string[j].ds18b20s[i],
+                                                    &temperature);
+
+                    if (err != ESP_OK)
+                    {
+                        ESP_LOGE(TAG, "Error in get_temperature %d", err);
+                        if (sensor_string[j].ds18b20s[i]->user_id != -1) sensor_string[j].measured_temp[sensor_string[j].ds18b20s[i]->user_id] = -254;
+                    }
+
+                    else if (sensor_string[j].ds18b20s[i]->user_id != -1) sensor_string[j].measured_temp[sensor_string[j].ds18b20s[i]->user_id] = temperature;
+                }
             }
+            ESP_LOGI(TAG, "Done with conversions");
+            if(*_task_to_block != NULL)
+            {
+                ESP_LOGI(TAG, "Notify temperature is ready");
+                xTaskNotifyIndexed(*_task_to_block, 0, 0, eSetValueWithOverwrite);
+            }
+
+            xSemaphoreGive(sensor_strings_semaphore);
         }
-        ESP_LOGI(TAG, "Done with conversions");
-        xTaskNotifyIndexed(_task_to_block, 2, 0, eSetValueWithOverwrite);
+
         vTaskDelay(pdMS_TO_TICKS(1000));
+
     }
 }
 
@@ -226,4 +300,9 @@ float ds18b20_manager_get_temp(int string_number, int index_in_string)
     }
 
     return -255;
+}
+
+void ds18b20_manager_set_address(int string_number, int index_in_string, onewire_device_address_t address)
+{
+    sensor_string[string_number].address_map[index_in_string] = address;
 }

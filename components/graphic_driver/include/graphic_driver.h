@@ -28,5 +28,8 @@ void graphic_driver_init(void);
 void graphic_driver_usb_connected(void);
 
 void graphic_driver_show_text(char * text);
+void graphic_driver_show_usb(void);
+void graphic_driver_show_recording(bool is_recording);
+void graphic_driver_clear(void);
 
 #endif /* MAIN_GRAPHIC_DRIVER_H_ */

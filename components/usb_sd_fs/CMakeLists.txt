@@ -1,4 +1,4 @@
 idf_component_register(SRCS "usb_sd_fs.c"
                     INCLUDE_DIRS "include"
-                    REQUIRES fatfs vfs espressif__esp_tinyusb)
+                    REQUIRES fatfs vfs espressif__esp_tinyusb app_update spi_flash)
 

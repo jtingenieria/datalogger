@@ -19,15 +19,17 @@
 
 static const char TAG[] = "mcp_7940";
 
-static const uint8_t SDA = 21;
-static const uint8_t SCL = 22;
+static const uint8_t SDA = 18;
+static const uint8_t SCL = 17;
 
-#define MCP_I2C_NUM I2C_NUM_0
+#define MCP_I2C_NUM I2C_NUM_1
 #define I2C_MAX_TIMEOUT 5000
 #define APB_I2C_MAX_TIMEOUT 80000000/I2C_MAX_TIMEOUT
 #define MCP_ADDR 0B1101111
 
-esp_err_t rtc_begin_i2c(){
+esp_err_t rtc_begin_i2c()
+{
+    //esp_log_level_set(TAG, ESP_LOG_DEBUG);
 	i2c_config_t conf = { };
 	conf.mode = I2C_MODE_MASTER;
 	conf.scl_io_num = (gpio_num_t)SCL;
@@ -42,11 +44,13 @@ esp_err_t rtc_begin_i2c(){
 		return ret;
 	} else {
 		ret = i2c_driver_install((i2c_port_t)MCP_I2C_NUM, conf.mode, 0, 0, 0);
-		if (ret != ESP_OK) {
+		if (ret != ESP_OK)
+		{
 			ESP_LOGE(TAG,"i2c_driver_install failed");
 			return ret;
-		} else {
-			ret = i2c_set_timeout((i2c_port_t)MCP_I2C_NUM,APB_I2C_MAX_TIMEOUT);
+		}
+		else
+		{
 			ESP_LOGI(TAG,"RTC initialized");
 
 		}
@@ -91,6 +95,7 @@ esp_err_t rtc_set_time(const rtc_time_t *time)
 	// Minutes
 	time_data[1] |= ((time->minten) << 4) & 0B1110000;
 	time_data[1] |= time->minone & 0B1111;
+	ESP_LOGD(TAG, "(write) time_data[1]: %u%u" ,(time_data[1]>>4)&0b111,(time_data[1])&0b1111);
 
 	// Hours
 	if( time->mode_24 )
@@ -158,7 +163,7 @@ esp_err_t rtc_read_time(rtc_time_t *time)
 	}
 	time->secten = (time_data[0] & 0B1110000) >> 4;
 	time->secone = time_data[0] & 0B1111;
-	time->minten = (time_data[1] & 0B111000) >> 4;
+	time->minten = (time_data[1] & 0B1110000) >> 4;
 	time->minone = time_data[1] & 0B1111;
 	time->hrten = (time_data[2] & 0B110000) >> 4;
 	time->hrone = time_data[2] & 0B1111;
@@ -170,9 +175,11 @@ esp_err_t rtc_read_time(rtc_time_t *time)
 	time->yrten = (time_data[6] & 0B11110000) >> 4;
 	time->yrone = time_data[6] & 0B1111;
 
-	/*ESP_LOGI(TAG, "Battery backup enabled?: %d",rtc_is_battery_enabled());
-	ESP_LOGI(TAG, "Osc?: %d",rtc_get_osc());
-	ESP_LOGI(TAG, "Ext osc?: %d",rtc_get_external_osc());*/
+	ESP_LOGD(TAG, "(read) time_data[1]: %u%u" ,(time_data[1]>>4)&0b111,(time_data[1])&0b1111);
+
+	ESP_LOGD(TAG, "Battery backup enabled?: %d",rtc_is_battery_enabled());
+	ESP_LOGD(TAG, "Osc?: %d",rtc_get_osc());
+	ESP_LOGD(TAG, "Ext osc?: %d",rtc_get_external_osc());
 
 	return ESP_OK;
 }
@@ -266,8 +273,10 @@ void rtc_rtc_2_tm(const rtc_time_t *from, tm *to)
 	// Month - Stored 0-index in tm but 1-index in rtcc
 	to->tm_mon = ((from->mthten * 10) + from->mthone) - 1;
 
+	ESP_LOGD(TAG, "From: %d %d", from->yrten, from->yrone);
 	// Year - Stored years since 1900 in tm but years since 2000 in rtcc
-	to->tm_year = ((from->yrten * 10) + from->yrten) + 100;
+	to->tm_year = ((from->yrten * 10) + from->yrone) + 100;
+	ESP_LOGD(TAG, "To: %d", to->tm_year);
 }
 
 void rtc_set_bits(uint8_t address, uint8_t mask, uint8_t values)

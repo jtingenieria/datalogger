@@ -58,6 +58,8 @@ lv_obj_t *ui_flash_screen_obj = NULL;
 
 extern const lv_img_dsc_t intro_logo;
 extern const lv_img_dsc_t usb_icon;
+extern const lv_img_dsc_t recording_icon;
+extern const lv_img_dsc_t stopped_recording_icon;
 
 static bool usb_is_connected = false;
 
@@ -97,6 +99,32 @@ void graphic_driver_show_text(char * text)
     lv_obj_set_style_text_align(label1, LV_TEXT_ALIGN_CENTER, 0);
 }
 
+void graphic_driver_show_recording(bool is_recording)
+{
+    lv_obj_clean(lv_scr_act());
+    lv_obj_t * icon = lv_img_create(lv_scr_act());
+
+    if(is_recording)
+    {
+        lv_img_set_src(icon, &recording_icon);
+    }
+    else
+    {
+        lv_img_set_src(icon, &stopped_recording_icon);
+    }
+}
+
+void graphic_driver_show_usb(void)
+{
+    lv_obj_clean(lv_scr_act());
+    lv_obj_t * icon = lv_img_create(lv_scr_act());
+    lv_img_set_src(icon, &usb_icon);
+}
+
+void graphic_driver_clear(void)
+{
+    lv_obj_clean(lv_scr_act());
+}
 void graphic_driver_main_task(void *pvParameter)
 {
 
@@ -182,13 +210,13 @@ void graphic_driver_main_task(void *pvParameter)
 	indev_group();
 
 
-	lv_obj_t * icon = lv_img_create(lv_scr_act());
-	/*From variable*/
-	lv_img_set_src(icon, &intro_logo);
-
-	lv_timer_t * timer = lv_timer_create(my_timer, 1500, NULL);
-
-	lv_timer_set_repeat_count(timer, 1);
+//	lv_obj_t * icon = lv_img_create(lv_scr_act());
+//	/*From variable*/
+//	lv_img_set_src(icon, &intro_logo);
+//
+//	lv_timer_t * timer = lv_timer_create(my_timer, 1500, NULL);
+//
+//	lv_timer_set_repeat_count(timer, 1);
 
 	//lv_timer_ready(timer);
 
@@ -212,6 +240,7 @@ void graphic_driver_main_task(void *pvParameter)
 void graphic_driver_init(void)
 {
     xTaskCreatePinnedToCore(graphic_driver_main_task, "gui", 4096*2, NULL, 0, NULL, 1);
+    vTaskDelay(pdMS_TO_TICKS(20));
 }
 
 void graphic_driver_usb_connected(void)
