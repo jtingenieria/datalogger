@@ -18,7 +18,8 @@ static const char * TAG = "esp_now_module";
 static void (*_success_cb)(void);
 static void (*_fail_cb)(void);
 
-uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF , 0xFF};
+uint8_t broadcastAddress[] = {0x8C, 0x4B, 0x14, 0xE7, 0xB0 , 0xFC};
+
 esp_now_peer_info_t peerInfo;
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)

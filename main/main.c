@@ -228,6 +228,7 @@ void app_main(void)
                         {
                             ESP_LOGD(TAG, "About to log");
                             time_driver_initialize_from_sleep();
+                            init_nvs();
                             usb_sd_fs_init_card();
                             logger_init();
                             logger_log(true);
@@ -292,6 +293,7 @@ void app_main(void)
                         {
 
                             ESP_LOGI(TAG, "Init logging");
+                            vTaskDelay(pdMS_TO_TICKS(250));
                             graphic_driver_init();
                             time_driver_initialize_from_sleep();
                             //vTaskDelay(pdMS_TO_TICKS(1000));

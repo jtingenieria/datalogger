@@ -24,12 +24,14 @@ static QueueHandle_t uart0_queue;
 
 static QueueHandle_t uart_packet_q;
 
+static serial_packet_t * packet;
+
 RTC_DATA_ATTR int serial_packet_id = 0;
 
 void serial_logger_get_data(TickType_t xTicksToWait, serial_packet_t ** packet)
 {
     *packet = malloc(serial_packet_size);
-    ESP_LOGI(TAG, "Dir de packet: %p. Apunta a %p",(void *) packet, (void *) *packet);
+    ESP_LOGV(TAG, "Dir de packet: %p. Apunta a %p",(void *) packet, (void *) *packet);
     //vTaskDelay(pdMS_TO_TICKS(100));
 	if(xQueueReceive(uart_packet_q, *packet, xTicksToWait) != pdTRUE)
 	{
@@ -37,6 +39,8 @@ void serial_logger_get_data(TickType_t xTicksToWait, serial_packet_t ** packet)
 		(*packet)->id = -1;
 		(*packet)->float_data_qty = number_of_float_vars;
 	}
+	ESP_LOGD(TAG, "get data qty = %d", (*packet)->float_data_qty);
+	ESP_LOGD(TAG, "get data rx = %d", (*packet)->received_data_qty);
 }
 
 static void uart_event_task(void *pvParameters)
@@ -102,8 +106,7 @@ static void uart_event_task(void *pvParameters)
                         uart_flush_input(EX_UART_NUM);
                     } else {
 
-                    	serial_packet_t * packet = malloc(serial_packet_size);
-                    	packet->size_of_packet = serial_packet_size;
+
 
                         uart_read_bytes(EX_UART_NUM, dtmp, pos, 100 / portTICK_PERIOD_MS);
                         uint8_t pat[PATTERN_CHR_NUM + 1];
@@ -117,6 +120,7 @@ static void uart_event_task(void *pvParameters)
                             if (token != NULL)
                             {
                                 packet->float_data_p[j] = strtod(token, NULL);
+                                ESP_LOGD(TAG, "float_data_p[%d] = %.2f",j, packet->float_data_p[j]);
                                 token = strtok(NULL, ",");
                             }
                             else
@@ -127,11 +131,13 @@ static void uart_event_task(void *pvParameters)
                         packet->float_data_qty = number_of_float_vars;
                         packet->received_data_qty = j;
                         packet->id = serial_packet_id;
+                        ESP_LOGD(TAG, "serial qty = %d", packet->float_data_qty);
+						ESP_LOGD(TAG, "serial rx = %d", packet->received_data_qty);
                         serial_packet_id ++;
                         xQueueGenericSend( uart_packet_q, (void *)packet, 0, queueSEND_TO_FRONT );
                         //ESP_LOGI(TAG, "read data: %s", dtmp);
                         //ESP_LOGI(TAG, "read pat : %s", pat);
-                        free(packet);
+                        //free(packet);
                     }
                     break;
                 //Others
@@ -147,14 +153,17 @@ static void uart_event_task(void *pvParameters)
 }
 
 
-int serial_logger_init(int float_data_expected)
+int serial_logger_init(int float_data_expected, int gpio_serial_port)
 {
     number_of_float_vars = float_data_expected;
 
-    serial_packet_size = sizeof (serial_packet_t) + sizeof(float) * number_of_float_vars;
+    serial_packet_size = sizeof (serial_packet_t) - sizeof(float *) + sizeof(float) * number_of_float_vars;
     //serial_packet_t * packet = malloc();
 
-	uart_packet_q = xQueueCreate(10, sizeof(serial_packet_size));
+	uart_packet_q = xQueueCreate(10, serial_packet_size);
+
+	packet = malloc(serial_packet_size);
+	packet->size_of_packet = serial_packet_size;
 
 	 /* Configure parameters of an UART driver,
 	     * communication pins and install the driver */
@@ -170,7 +179,7 @@ int serial_logger_init(int float_data_expected)
 	    //Set UART log level
 	    esp_log_level_set(TAG, ESP_LOG_INFO);
 	    //Set UART pins (using UART0 default pins ie no changes.)
-	    uart_set_pin(EX_UART_NUM, UART_PIN_NO_CHANGE, GPIO_UART_1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+	    uart_set_pin(EX_UART_NUM, UART_PIN_NO_CHANGE, gpio_serial_port, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 	    //Install UART driver, and get the queue.
 	    uart_driver_install(EX_UART_NUM, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart0_queue, 0);
 
@@ -180,7 +189,7 @@ int serial_logger_init(int float_data_expected)
 	    uart_pattern_queue_reset(EX_UART_NUM, 20);
 
 	    //Create a task to handler UART event from ISR
-	    xTaskCreate(uart_event_task, "uart_event_task", 2048, NULL, 12, NULL);
+	    xTaskCreate(uart_event_task, "uart_event_task", 4096, NULL, 12, NULL);
 
 	    return 0;
 
