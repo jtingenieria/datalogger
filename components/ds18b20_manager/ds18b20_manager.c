@@ -244,7 +244,7 @@ static void ds18b20_manager_task(void * params)
                 if(sensor_string[j].ds18b20s[0] == NULL) continue;
                 ds18b20_trigger_temperature_conversion_for_all(sensor_string[j].ds18b20s[0]);
             }
-            ESP_LOGI(TAG, "Triggered conversions");
+            ESP_LOGI(TAG, "Triggered conversions for %d strings", sensor_string_count);
             xSemaphoreGive(sensor_strings_semaphore);
         }
 
@@ -267,10 +267,14 @@ static void ds18b20_manager_task(void * params)
                         if (sensor_string[j].ds18b20s[i]->user_id != -1) sensor_string[j].measured_temp[sensor_string[j].ds18b20s[i]->user_id] = -254;
                     }
 
-                    else if (sensor_string[j].ds18b20s[i]->user_id != -1) sensor_string[j].measured_temp[sensor_string[j].ds18b20s[i]->user_id] = temperature;
+                    else if (sensor_string[j].ds18b20s[i]->user_id != -1)
+					{
+						sensor_string[j].measured_temp[sensor_string[j].ds18b20s[i]->user_id] = temperature;
+						ESP_LOGD(TAG, "Temp in sensor_string[%d].measured_temp[%d] is: %.2f",j,sensor_string[j].ds18b20s[i]->user_id, temperature);
+					}
                 }
             }
-            ESP_LOGI(TAG, "Done with conversions");
+            ESP_LOGI(TAG, "Done with conversions for %d strings", sensor_string_count);
             if(*_task_to_block != NULL)
             {
                 ESP_LOGI(TAG, "Notify temperature is ready");

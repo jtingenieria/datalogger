@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Embedded Device Configurator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+    <h1>Embedded Device Configurator</h1>
+
+    <div id="configContainer">
+        <!-- String configuration sections will be inserted here -->
+        <div id="dummy_node"></div>
+    </div>
+
+    <section id="outputFormat">
+        <h2>Output Format Configuration</h2>
+        <div id="outputOrder">
+            <!-- Output Order Selects will be added dynamically here -->
+        </div>
+        <div id="outputFormatString">
+            <label for="formatString">Output String Format:</label>
+            <input type="text" id="formatString">
+        </div>
+    </section>
+
+    <!-- Save Button -->
+    <button id="saveButton">Save Parameters</button>
+
+    <!-- Import Button -->
+    <button id="importButton">Import Parameters</button>
+
+    <script src="scripts.js"></script>
+</body>
+
+</html>

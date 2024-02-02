@@ -67,6 +67,4 @@ doxygen_output
 *.o
 *.d
 managed_components/
-sdkconfig
-sdkconfig.old
 dependencies.lock

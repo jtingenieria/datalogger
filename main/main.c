@@ -51,7 +51,7 @@ enum{
 static RTC_DATA_ATTR int datalogger_logging_status = DATALOGGER_IS_NOT_LOGGING;
 static RTC_DATA_ATTR bool date_is_acquired = false;
 
-
+TickType_t tick_bus_enabled;
 
 static void enable_btn_wakeup(void)
 {
@@ -103,9 +103,14 @@ static void enable_bus(bool enabled)
 {
     gpio_set_direction(BUS_ENABLE_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(BUS_ENABLE_PIN, enabled);
+    tick_bus_enabled = xTaskGetTickCount();
 }
 
-
+void graphics_init()
+{
+	vTaskDelayUntil( &tick_bus_enabled, pdMS_TO_TICKS(500) );
+	graphic_driver_init();
+}
 
 void set_time_success(void)
 {
@@ -175,10 +180,12 @@ static void init_usb(void)
     usb_sd_fs_init_card();
     usb_sd_fs_init_usb();
 //                usb_console_init();
-    graphic_driver_init();
+    graphics_init();
     //graphic_driver_usb_connected();
     graphic_driver_show_usb();
 }
+
+
 
 void app_main(void)
 {
@@ -191,15 +198,15 @@ void app_main(void)
     gpio_set_direction(GPIO_RED_LED, GPIO_MODE_OUTPUT);
     gpio_set_direction(GPIO_GREEN_LED, GPIO_MODE_OUTPUT);
 
-    enable_bus(true);
-    vTaskDelay(pdMS_TO_TICKS(100));
+    if(esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_UNDEFINED) enable_bus(true);
+    //vTaskDelay(pdMS_TO_TICKS(100));
     enable_btn_wakeup();
 
     switch(boot_instruction)
     {
         case BOOT_INSTRUCTION_UPDATE_FIRMWARE:
                 ESP_LOGI(TAG, "Update mode");
-                graphic_driver_init();
+                graphics_init();
                 graphic_driver_show_text("Starting update");
                 usb_sd_fs_init_card();
                 usb_sd_fs_ota_start();
@@ -255,7 +262,7 @@ void app_main(void)
                         if(datalogger_logging_status == DATALOGGER_IS_LOGGING)
                         {
                             ESP_LOGI(TAG, "Want to see sensors");
-                            graphic_driver_init();
+                            graphics_init();
                             start_btn_timer();
                             if(datalogger_logging_status == DATALOGGER_IS_LOGGING)
                             {
@@ -293,8 +300,8 @@ void app_main(void)
                         {
 
                             ESP_LOGI(TAG, "Init logging");
-                            vTaskDelay(pdMS_TO_TICKS(250));
-                            graphic_driver_init();
+                            //vTaskDelay(pdMS_TO_TICKS(250));
+                            graphics_init();
                             time_driver_initialize_from_sleep();
                             //vTaskDelay(pdMS_TO_TICKS(1000));
                             //graphic_driver_show_text("Recording data.");
