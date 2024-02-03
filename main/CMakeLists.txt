@@ -12,7 +12,8 @@ set(requires vfs
 	        lwip
 	        nvs_flash
 	        serial_logger
-	        esp_now_module)
+	        esp_now_module
+	        configuration_manager)
 
 idf_component_register(
     SRCS "${srcs}"

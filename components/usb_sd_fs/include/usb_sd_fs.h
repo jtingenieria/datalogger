@@ -9,7 +9,8 @@ typedef enum
     USB_SD_FS_OK,
     USB_SD_FS_MOUNT_FAIL,
     USB_SD_FS_OPEN_FAILED,
-    USB_SD_FS_OTHER_ERR
+    USB_SD_FS_OTHER_ERR,
+	USB_SD_FS_MALLOC_FAILED,
 } usb_sd_fs_err_t;
 
 
@@ -32,5 +33,7 @@ esp_err_t usb_sd_fs_ota_wait_for_result(void);
 char * usb_sd_fs_get_full_filename(void);
 
 bool usb_sd_fs_is_filename_set(void);
+
+usb_sd_fs_err_t usb_sd_fs_read_file(char * file_name, char **data_out, long * read_size);
 
 #endif

@@ -68,3 +68,4 @@ doxygen_output
 *.d
 managed_components/
 dependencies.lock
+web/.vscode/launch.json

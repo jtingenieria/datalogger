@@ -21,8 +21,11 @@
 #include "usb_sd_fs.h"
 #include "serial_logger.h"
 #include "esp_now_module.h"
+#include "configuration_manager.h"
 
 static const char * TAG = "logger";
+
+#define NUMBER_OF_STRINGS 6
 
 typedef struct
 {
@@ -40,33 +43,36 @@ TaskHandle_t logger_task_handle = NULL;
 TaskHandle_t external_task_handle = NULL;
 
 #define GPIO_S1_STRING 9
+#define GPIO_S2_STRING 10
+#define GPIO_S3_STRING 11
+#define GPIO_S4_STRING 12
+#define GPIO_S5_STRING 15
+#define GPIO_S6_STRING 16
+
 #define MAX_DEVICES_S1_STRING 14
 #define GPIO_S56_STRING 15
 #define GPIO_SERIAL_PORT 16
-#define MAX_DEVICES_S56_STRING 16
+#define MAX_DEVICES_S56_STRING 15
 
 #define GPIO_S3_STRING 11
-#define MAX_DEVICES_S3_STRING 4
-
-static int assigned_number_S3;
+#define MAX_DEVICES_S3_STRING 1
 
 static esp_packet_t * esp_now_packet;
 RTC_DATA_ATTR static int esp_now_id = 0;
 
-static onewire_device_address_t addr_map[MAX_DEVICES_S3_STRING] =
-{
-	0x0B8B6BB10164FF28,
-	0x26B66CB10164FF28,
-	0x66CB11B60164FF28,
-	0x0
-};
+string_config_t strings_config[NUMBER_OF_STRINGS] = {0};
 
-static float temperature_calibration[MAX_DEVICES_S3_STRING][2] =
+#define UART_DATA_QTY 5
+
+static int assigned_number[NUMBER_OF_STRINGS];
+static gpio_num_t gpio_numbers[] =
 {
-  {1 , 0},
-  {1,  0},
-  {1 , 0},
-  {1 , 0},
+ GPIO_S1_STRING,
+ GPIO_S2_STRING,
+ GPIO_S3_STRING,
+ GPIO_S4_STRING,
+ GPIO_S5_STRING,
+ GPIO_S6_STRING,
 };
 
 
@@ -91,6 +97,7 @@ static void logger_task(void *pvParams)
     ESP_LOGD(TAG, "Task done wait");
 
     uint32_t esp_now_delivery = 0;
+    int absolute_signal_position = 0;
     char data_line[256];
     char data[40], data2[20];
     float sensor_data = 0;
@@ -108,81 +115,104 @@ static void logger_task(void *pvParams)
              &timeinfo);
 
 
-
-    for (int i = 0; i < MAX_DEVICES_S3_STRING; i++)
+    for(int i = 0; i <  NUMBER_OF_STRINGS; i++)
     {
-        sensor_data = ds18b20_manager_get_temp(assigned_number_S3, i);
-        sensor_data = sensor_data*temperature_calibration[i][0] + temperature_calibration[i][1];
-        if (i != MAX_DEVICES_S3_STRING - 1) sprintf(data, "%.2f, ", sensor_data);
-        else sprintf(data, "%.2f", sensor_data);
-        strcat(data_line, data);
-        esp_now_packet->float_data_p[i] = sensor_data;
-        ESP_LOGD(TAG, "Sensor %d: %.2f",i,sensor_data);
+    	switch(strings_config[i].sensor_type)
+    	{
+    		case SENSOR_DS18B20:
+    			if(strings_config[i].quantity_of_signals > 0)
+    			{
+    				for (int j = 0 ; j < strings_config[i].quantity_of_signals; j++)
+    				{
+						sensor_data = ds18b20_manager_get_temp(assigned_number[i], j);
 
+						sprintf(data, "%.2f, ", sensor_data);
+						strcat(data_line, data);
+						esp_now_packet->float_data_p[absolute_signal_position] = sensor_data;
+						absolute_signal_position++;
+						ESP_LOGD(TAG, "Sensor %d %d: %.2f",i,j,sensor_data);
+    				}
+    			}
+    			break;
+    		case SENSOR_SERIAL:
+                ESP_LOGD(TAG, "Serial sensor in %d with %d signals",i, strings_config[i].quantity_of_signals);
+    			if(strings_config[i].quantity_of_signals > 0)
+				{
+    			    memset(data, 0, sizeof(data));
+    			    memset(data2, 0, sizeof(data2));
+
+    			    serial_packet_t * packet;
+    			    serial_logger_get_data(1000, &packet);
+
+
+    			    if(packet->id != -1)
+    			    {
+    			    	ESP_LOGD(TAG, "-1. qty = %d", packet->float_data_qty);
+    			    	ESP_LOGD(TAG, "-1. rx = %d", packet->received_data_qty);
+    			        for(int i = 0; i < packet->received_data_qty; i++)
+    			        {
+    			            sprintf(data2,"%.2f, ", packet->float_data_p[i] );
+    			            strcat(data, data2);
+    			            esp_now_packet->float_data_p[absolute_signal_position] = packet->float_data_p[i];
+    			            absolute_signal_position++;
+    			        }
+
+    			        for(int i = 0; i < (packet->float_data_qty - packet->received_data_qty); i++)
+    			        {
+    			            sprintf(data2,"%.2f, ", -255.0);
+    			            strcat(data, data2);
+    			            esp_now_packet->float_data_p[absolute_signal_position] = -255.0;
+    			            absolute_signal_position++;
+    			        }
+    			       // strcat(data, "\r\n");
+    			    }
+    			    else
+    			    {
+    			        ESP_LOGD(TAG, "-1. qty = %d", packet->float_data_qty);
+    			        for(int j = 0; j < packet->float_data_qty; j++)
+    			        {
+    			            sprintf(data2,"%.2f, ", -255.0);
+    			            strcat(data, data2);
+    			            esp_now_packet->float_data_p[absolute_signal_position] = -255.0;
+    			            absolute_signal_position++;
+    			        }
+
+    			        //strcat(data, "\r\n");
+    			        ESP_LOGV(TAG, "-1 done");
+    			    }
+    			    strcat(data_line, data);
+    			    free(packet);
+
+    			}
+    			break;
+    		default:
+    			break;
+    	}
     }
 
-    memset(data, 0, sizeof(data));
-    memset(data2, 0, sizeof(data2));
-
-    serial_packet_t * packet;
-    serial_logger_get_data(1000, &packet);
 
 
-    if(packet->id != -1)
-    {
-    	ESP_LOGD(TAG, "-1. qty = %d", packet->float_data_qty);
-    	ESP_LOGD(TAG, "-1. rx = %d", packet->received_data_qty);
-        for(int i = 0; i < packet->received_data_qty; i++)
-        {
-            sprintf(data2,", %.2f", packet->float_data_p[i] );
-            strcat(data, data2);
-            esp_now_packet->float_data_p[MAX_DEVICES_S3_STRING + i] = packet->float_data_p[i];
-        }
-
-        for(int i = 0; i < (packet->float_data_qty - packet->received_data_qty); i++)
-        {
-            sprintf(data2,", %.2f", -255.0);
-            strcat(data, data2);
-            esp_now_packet->float_data_p[MAX_DEVICES_S3_STRING + packet->received_data_qty + i] = -255.0;
-        }
-       // strcat(data, "\r\n");
-    }
-    else
-    {
-        ESP_LOGD(TAG, "-1. qty = %d", packet->float_data_qty);
-        for(int j = 0; j < packet->float_data_qty; j++)
-        {
-            sprintf(data2,", %.2f", -255.0);
-            strcat(data, data2);
-            esp_now_packet->float_data_p[MAX_DEVICES_S3_STRING + j] = -255.0;
-        }
-
-        //strcat(data, "\r\n");
-        ESP_LOGV(TAG, "-1 done");
-    }
-    strcat(data_line, data);
-
-    esp_now_packet->float_data_qty = packet->float_data_qty + MAX_DEVICES_S3_STRING;
+    esp_now_packet->float_data_qty = absolute_signal_position-1;
     esp_now_packet->id = esp_now_id ++;
 
     TickType_t xLastWakeTime;
 
-    if(packet->float_data_qty != packet->received_data_qty || packet->id == -1)
-    {
-    	gpio_set_level(GPIO_RED_LED, true);
-		vTaskDelay(pdMS_TO_TICKS(25));
-    }
-    else
-    {
-    	gpio_set_level(GPIO_GREEN_LED, true);
-		vTaskDelay(pdMS_TO_TICKS(25));
-    }
+//    if(packet->float_data_qty != packet->received_data_qty || packet->id == -1)
+//    {
+//    	gpio_set_level(GPIO_RED_LED, true);
+//		vTaskDelay(pdMS_TO_TICKS(25));
+//    }
+//    else
+//    {
+//    	gpio_set_level(GPIO_GREEN_LED, true);
+//		vTaskDelay(pdMS_TO_TICKS(25));
+//    }
     xLastWakeTime = xTaskGetTickCount();
 
     gpio_set_level(GPIO_GREEN_LED, false);
 	gpio_set_level(GPIO_RED_LED, false);
 
-	free(packet);
+//	free(packet);
     ESP_LOGI(TAG, "%s", data_line);
     strcat(data_line, "\r\n");
 
@@ -235,38 +265,82 @@ static void logger_task(void *pvParams)
 
     if(external_task_handle != NULL)
     {
-        ESP_LOGD(TAG, "Notify caller");
+        ESP_LOGV(TAG, "Notify caller");
         xTaskNotifyIndexed(external_task_handle, 0, 0, eSetValueWithOverwrite);
     }
     else
     {
-        ESP_LOGD(TAG, "Nothing to notify");
+        ESP_LOGV(TAG, "Nothing to notify");
     }
 
     vTaskDelete(NULL);
 }
 
-#define UART_DATA_QTY 5
 
 void logger_init(void)
 {
     esp_log_level_set(TAG, ESP_LOG_INFO);
 
+	bool serial_logger_assigned = 0;
+
+	int total_signal_qty = 0;
+
+	configuration_manager_import_config(strings_config);
+
+    for(int i = 0; i <  NUMBER_OF_STRINGS; i++)
+    {
+    	//ESP_LOGI(TAG, "Sensor %d type: %d",i+1, strings_config[i].sensor_type);
+    	//ESP_LOGI(TAG, "Sensor %d qty: %d",i+1, strings_config[i].quantity_of_signals);
+    	//ESP_LOGI(TAG, "Sensor %d delim: %d",i+1, strings_config[i].delimiter_char);
+    	//ESP_LOGI(TAG, "Sensor %d end: %d",i+1, strings_config[i].end_char);
+
+//    	for(int j = 0 ; j < strings_config[i].quantity_of_signals ; j++)
+//    	{
+//    		ESP_LOGI(TAG, "Sensor %d addr %d:  %016llX",i+1,j+1, strings_config[i].device_addr[j]);
+//    	}
+
+    }
+
     xTaskCreate(logger_task, "logger_task", 8192, NULL, 2, &logger_task_handle);
     ds18b20_manager_init(&logger_task_handle);
 
-    ds18b20_manager_instance_string(GPIO_S3_STRING, MAX_DEVICES_S3_STRING, &assigned_number_S3);
-
-    for(int i = 0; i <  MAX_DEVICES_S3_STRING; i++)
+    for(int i = 0; i <  NUMBER_OF_STRINGS; i++)
     {
-    	ds18b20_manager_set_address(assigned_number_S3, i, addr_map[i]);
+    	switch(strings_config[i].sensor_type)
+    	{
+    		case SENSOR_DS18B20:
+    			if(strings_config[i].quantity_of_signals > 0)
+    			{
+    				ds18b20_manager_instance_string(gpio_numbers[i], strings_config[i].quantity_of_signals, &(assigned_number[i]));
+    			    for(int j = 0; j <  strings_config[i].quantity_of_signals; j++)
+    			    {
+    			    	ds18b20_manager_set_address(assigned_number[i], j, strings_config[i].device_addr[j]);
+    			    	ESP_LOGV(TAG, "Address[%d][%d] set as %016llX",i,j,strings_config[i].device_addr[j]);
+    			    }
+    			    ds18b20_manager_init_string(assigned_number[i]);
+    			    total_signal_qty += strings_config[i].quantity_of_signals;
+    			}
+    			break;
+    		case SENSOR_SERIAL:
+    			if(strings_config[i].quantity_of_signals > 0)
+				{
+					if(!serial_logger_assigned)
+					{
+						serial_logger_assigned = true;
+						serial_logger_init(strings_config[i].quantity_of_signals, gpio_numbers[i]);
+						total_signal_qty += strings_config[i].quantity_of_signals;
+
+					}
+    			}
+    			break;
+    		default:
+    			break;
+    	}
     }
 
-    ds18b20_manager_init_string(assigned_number_S3);
+    ds18b20_manager_enable_task();
 
-    serial_logger_init(UART_DATA_QTY, GPIO_SERIAL_PORT);
-
-    size_t s = sizeof (esp_packet_t) - sizeof(float *) + sizeof(float) * (MAX_DEVICES_S3_STRING + UART_DATA_QTY);
+    size_t s = sizeof (esp_packet_t) - sizeof(float *) + sizeof(float) * (total_signal_qty);
     esp_now_packet = malloc(s);
     esp_now_packet->size_of_packet = s;
 

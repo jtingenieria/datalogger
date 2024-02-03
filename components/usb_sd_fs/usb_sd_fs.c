@@ -227,6 +227,42 @@ usb_sd_fs_err_t usb_sd_fs_write(char *data)
 
 }
 
+usb_sd_fs_err_t usb_sd_fs_read_file(char * file_name,char **data_out , long * read_size)
+{
+
+	//esp_log_level_set(TAG, ESP_LOG_INFO);
+
+	char full_path[128];
+	sprintf(full_path, "%s/%s", BASE_PATH, file_name);
+	FILE *file;
+	file = fopen (full_path, "r" );
+	if(file == NULL)
+	{
+		ESP_LOGW(TAG, "File open failed");
+		return USB_SD_FS_OPEN_FAILED;
+	}
+	fseek(file, 0, SEEK_END);
+	long fsize = ftell(file);
+
+	ESP_LOGI(TAG, "File size is %ld", (long)fsize);
+
+	fseek(file, 0, SEEK_SET);
+
+	*data_out = malloc(fsize + 1);
+	memset(*data_out, 0, fsize + 1);
+	if(*data_out == NULL)
+	{
+		ESP_LOGW(TAG, "Malloc failed");
+		return USB_SD_FS_MALLOC_FAILED;
+	}
+	*read_size = fread(*data_out,sizeof(char) , fsize, file);
+
+	ESP_LOGI(TAG, "Read size is %ld. Data out is %p",(long)*read_size, *data_out);
+
+	fclose(file);
+	return USB_SD_FS_OK;
+}
+
 enum
 {
     OTA_UPDATE_OK = ESP_OK,

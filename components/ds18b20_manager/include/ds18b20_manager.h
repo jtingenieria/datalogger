@@ -33,5 +33,6 @@ float ds18b20_manager_get_temp(int string_number, int index_in_string);
 
 void ds18b20_manager_set_address(int string_number, int index_in_string, onewire_device_address_t address);
 
+void ds18b20_manager_enable_task(void);
 
 #endif

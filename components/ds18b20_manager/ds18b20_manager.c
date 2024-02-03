@@ -38,7 +38,7 @@ static void ds18b20_manager_task(void * params);
 
 ds18b20_manager_err_t ds18b20_manager_init(TaskHandle_t * task_to_block)
 {
-    //esp_log_level_set(TAG, ESP_LOG_DEBUG);
+    esp_log_level_set(TAG, ESP_LOG_INFO);
 
     _task_to_block = task_to_block;
 
@@ -87,7 +87,7 @@ ds18b20_manager_err_t ds18b20_manager_instance_string(int gpio_number,
         sensor_string[sensor_string_count].ds18b20s = malloc(sizeof(ds18b20_device_handle_t) * max_devices);
         sensor_string[sensor_string_count].address_map = malloc(sizeof(onewire_device_address_t) * max_devices);
 
-        ESP_LOGD(TAG, "mallocs done");
+        ESP_LOGV(TAG, "mallocs done");
 
         if (sensor_string[sensor_string_count].ds18b20s == NULL || sensor_string[sensor_string_count].address_map == NULL || sensor_string[sensor_string_count].measured_temp == NULL)
         {
@@ -100,7 +100,7 @@ ds18b20_manager_err_t ds18b20_manager_instance_string(int gpio_number,
         memset(sensor_string[sensor_string_count].ds18b20s, 0, sizeof(ds18b20_device_handle_t) * max_devices);
         memset(sensor_string[sensor_string_count].address_map, 0, sizeof(onewire_device_address_t) * max_devices);
 
-        ESP_LOGD(TAG, "memsets done");
+        ESP_LOGV(TAG, "memsets done");
 
         if (string_number != NULL)
         {
@@ -110,7 +110,7 @@ ds18b20_manager_err_t ds18b20_manager_instance_string(int gpio_number,
 
         xSemaphoreGive(sensor_strings_semaphore);
 
-        ESP_LOGI(TAG, "Instance %d ok", sensor_string_count-1);
+        ESP_LOGV(TAG, "Instance %d ok", sensor_string_count-1);
 
         return DS18B20_MANAGER_ERR_OK;
     }
@@ -135,7 +135,7 @@ ds18b20_manager_err_t ds18b20_manager_init_string(int string_number)
     ESP_ERROR_CHECK(onewire_new_bus_rmt(&(sensor_string[string_number].bus_config),
                                         &(sensor_string[string_number].rmt_config),
                                         &(sensor_string[string_number].bus)));
-    ESP_LOGI(TAG,
+    ESP_LOGD(TAG,
              "1-Wire bus installed on GPIO%d",
              sensor_string[string_number].gpio_number);
 
@@ -145,7 +145,7 @@ ds18b20_manager_err_t ds18b20_manager_init_string(int string_number)
 
     // create 1-wire device iterator, which is used for device search
     ESP_ERROR_CHECK(onewire_new_device_iter(sensor_string[string_number].bus, &iter));
-    ESP_LOGI(TAG, "Device iterator created, start searching...");
+    ESP_LOGD(TAG, "Device iterator created, start searching...");
     do
     {
         search_result = onewire_device_iter_get_next(iter,
@@ -166,7 +166,7 @@ ds18b20_manager_err_t ds18b20_manager_init_string(int string_number)
                 {
                     if (sensor_string[string_number].address_map[j] == sensor_string[string_number].ds18b20s[sensor_string[string_number].detected_devices]->addr)
                     {
-                      ESP_LOGI(   TAG,
+                      ESP_LOGD(   TAG,
                                   "Matched DS18B20[%d], address: %016llX to position %d",
                                   sensor_string[string_number].detected_devices,
                                   next_onewire_device.address,
@@ -189,7 +189,7 @@ ds18b20_manager_err_t ds18b20_manager_init_string(int string_number)
 
                 if (sensor_string[string_number].detected_devices >= sensor_string[string_number].max_devices)
                 {
-                    ESP_LOGI(TAG,
+                    ESP_LOGV(TAG,
                              "Max DS18B20 number reached, stop searching...");
                     break;
                 }
@@ -203,7 +203,7 @@ ds18b20_manager_err_t ds18b20_manager_init_string(int string_number)
         }
     } while (search_result != ESP_ERR_NOT_FOUND);
     ESP_ERROR_CHECK(onewire_del_device_iter(iter));
-    ESP_LOGI(TAG,
+    ESP_LOGD(TAG,
              "Searching done, %d DS18B20 device(s) found",
              sensor_string[string_number].detected_devices);
 
@@ -219,11 +219,15 @@ ds18b20_manager_err_t ds18b20_manager_init_string(int string_number)
 //
 //    }
 
-    xTaskNotifyIndexed(ds18b20_manager_task_handle, 0, 0, eSetValueWithOverwrite);
+
 
     return DS18B20_MANAGER_ERR_OK;
 }
 
+void ds18b20_manager_enable_task(void)
+{
+	xTaskNotifyIndexed(ds18b20_manager_task_handle, 0, 0, eSetValueWithOverwrite);
+}
 
 static void ds18b20_manager_task(void * params)
 {
@@ -244,7 +248,7 @@ static void ds18b20_manager_task(void * params)
                 if(sensor_string[j].ds18b20s[0] == NULL) continue;
                 ds18b20_trigger_temperature_conversion_for_all(sensor_string[j].ds18b20s[0]);
             }
-            ESP_LOGI(TAG, "Triggered conversions for %d strings", sensor_string_count);
+            ESP_LOGD(TAG, "Triggered conversions for %d strings", sensor_string_count);
             xSemaphoreGive(sensor_strings_semaphore);
         }
 
@@ -261,6 +265,8 @@ static void ds18b20_manager_task(void * params)
                     err = ds18b20_get_temperature(  sensor_string[j].ds18b20s[i],
                                                     &temperature);
 
+                    ESP_LOGD(TAG, "Temp may be %.2f", temperature);
+
                     if (err != ESP_OK)
                     {
                         ESP_LOGE(TAG, "Error in get_temperature %d", err);
@@ -274,10 +280,10 @@ static void ds18b20_manager_task(void * params)
 					}
                 }
             }
-            ESP_LOGI(TAG, "Done with conversions for %d strings", sensor_string_count);
+            ESP_LOGD(TAG, "Done with conversions for %d strings", sensor_string_count);
             if(*_task_to_block != NULL)
             {
-                ESP_LOGI(TAG, "Notify temperature is ready");
+                ESP_LOGV(TAG, "Notify temperature is ready");
                 xTaskNotifyIndexed(*_task_to_block, 0, 0, eSetValueWithOverwrite);
             }
 
