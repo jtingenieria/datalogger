@@ -4,13 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Embedded Device Configurator</title>
+    <title>Data Logger Configurator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
 
-    <h1>Embedded Device Configurator</h1>
+    <h1>Data Logger Configurator</h1>
 
     <div id="configContainer">
         <!-- String configuration sections will be inserted here -->
@@ -18,21 +19,23 @@
     </div>
 
     <section id="outputFormat">
-        <h2>Output Format Configuration</h2>
+        <h2>Wireless Configuration</h2>
         <div id="outputOrder">
             <!-- Output Order Selects will be added dynamically here -->
         </div>
         <div id="outputFormatString">
-            <label for="formatString">Output String Format:</label>
+            <label for="formatString">MAC ESP-NOW Client:</label>
             <input type="text" id="formatString">
         </div>
     </section>
 
+    <!-- Import Button -->
+    <button id="importButton">Import Parameters</button>
+
     <!-- Save Button -->
     <button id="saveButton">Save Parameters</button>
 
-    <!-- Import Button -->
-    <button id="importButton">Import Parameters</button>
+
 
     <script src="scripts.js"></script>
 </body>

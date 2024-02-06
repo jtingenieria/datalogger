@@ -24,9 +24,9 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
             <div class="serialConfig" style="display:none;">
                 <!-- Will be shown/hidden based on sensor type selection -->
-                <label for="separationChar${index}">Separation Character:</label>
+                <label for="separationChar${index}">Delimiter character:</label>
                 <input type="text" class="separationChar" id="separationChar${index}" />
-                <label for="endChar${index}">End of Message Character:</label>
+                <label for="endChar${index}">End of Message character:</label>
                 <input type="text" class="endChar" id="endChar${index}" />
             </div>
         `;
@@ -82,7 +82,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    createOutputOrderSelects();
+    //createOutputOrderSelects();
 
     // Function to add event listeners
     function addEventListeners() {
@@ -97,7 +97,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Change event listeners for sensor type and quantity of signals
         document.addEventListener('change', handleSensorTypeChange);
         document.addEventListener('input', handleQuantityOfSignalsChange);
-        document.addEventListener('change', handleOutputOrderChange);
+        //document.addEventListener('change', handleOutputOrderChange);
     }
 
     // Function to handle changes in sensor type
@@ -110,9 +110,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const deviceAddresses = parentSection.querySelector('.deviceAddresses');
             const serialConfig = parentSection.querySelector('.serialConfig');
 
-            quantityOfSignals.style.display = (sensorType === 'DS18B20') ? 'block' : 'none';
+            /*quantityOfSignals.style.display = (sensorType === 'DS18B20') ? 'block' : 'none';*/
             deviceAddresses.style.display = (sensorType === 'DS18B20') ? 'block' : 'none';
-            serialConfig.style.display = (sensorType === 'serial') ? 'block' : 'none';
+            serialConfig.style.display = (sensorType === 'serial') ? 'inline-flex' : 'none';
         }
     }
 
@@ -129,28 +129,60 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    // Function to generate sensor div dynamically
+    function generateSensorDiv(sensor, parentSection, sensor_number) {
+        const div = document.createElement("div");
+        div.id = sensor.id;
+        div.className = "sensor-container";
+
+        // Create and append label and input elements for each property
+        const properties = [`Sensor ${sensor_number} name`, "Address", "M", "H"];
+        properties.forEach(property => {
+            const label = document.createElement("label");
+            label.textContent = property + ":";
+
+            const input = document.createElement("input");
+            input.type = "text";
+            input.name = property.toLowerCase().replace(/\s/g, ""); // Convert label to lowercase and remove spaces
+            if (property === `Sensor ${sensor_number} name`) {
+                input.name = "sensor";
+            }
+            if (property === "M") {
+                input.id = "calibrationM";
+                input.value = "1";
+            } else if (property === "H") {
+                input.id = "calibrationH";
+                input.value = "0";
+            }
+            const divRow = document.createElement("div");
+            divRow.className = "input-row";
+            divRow.appendChild(label);
+            divRow.appendChild(input);
+            div.appendChild(divRow);
+        });
+
+        // Append the div to the sensors container
+        parentSection.appendChild(div);
+    }
+
     // Function to add device address inputs dynamically
     function addDeviceAddressInputs(parentSection, qtySignals) {
         const deviceAddresses = parentSection.querySelector('.deviceAddresses');
-        const currentQtySignals = deviceAddresses.querySelectorAll('input').length;
-        console.log(deviceAddresses.querySelectorAll('input').length);
+        const currentQtySignals = deviceAddresses.querySelectorAll('.sensor-container').length;
+        //console.log(deviceAddresses.querySelectorAll('input').length);
         if (qtySignals > currentQtySignals) {
 
             for (let i = currentQtySignals + 1; i <= qtySignals; i++) {
-                const label = document.createElement('label');
-                label.textContent = `Sensor ${i}:`;
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.id = `${parentSection.id}_s${i}`;
-                deviceAddresses.appendChild(label);
-                deviceAddresses.appendChild(input);
+                sensor = {
+                    //name: `Sensor ${ i } `, id: `sensor${ i } `, class: "sensor-container"
+                    name: `Sensor ${i} `, id: `sensor${i} `, class: "sensor-container"
+                };
+                generateSensorDiv(sensor, deviceAddresses, i);
             }
         } else {
-            const labels = deviceAddresses.querySelectorAll('label');
-            const inputs = deviceAddresses.querySelectorAll('input');
-            for (let i = qtySignals; i < labels.length; i++) {
-                deviceAddresses.removeChild(labels[i]);
-                deviceAddresses.removeChild(inputs[i]);
+            const sensor_container = deviceAddresses.querySelectorAll('.sensor-container');
+            for (let i = qtySignals; i < sensor_container.length; i++) {
+                deviceAddresses.removeChild(sensor_container[i]);
             }
         }
     }
@@ -199,20 +231,26 @@ document.addEventListener('DOMContentLoaded', function () {
             const quantityOfSignalsInput = section.querySelector('.qtySignals');
             config.QuantityOfSignals = quantityOfSignalsInput.value;
             if (config.SensorType === 'DS18B20') {
-                const deviceAddressesInputs = section.querySelectorAll('.deviceAddresses input');
-                config.DeviceAddresses = Array.from(deviceAddressesInputs).map(input => input.value);
+                const nameInputs = section.querySelectorAll('.input-row input[name="sensor"]');
+                const addressInputs = section.querySelectorAll('.input-row input[name="address"]');
+                const MInputs = section.querySelectorAll('.input-row input[name="m"]');
+                const HInputs = section.querySelectorAll('.input-row input[name="h"]');
+                config.Names = Array.from(nameInputs).map(input => input.value);
+                config.Addresses = Array.from(addressInputs).map(input => input.value);
+                config.M = Array.from(MInputs).map(input => input.value);
+                config.H = Array.from(HInputs).map(input => input.value);
             } else {
                 const separationCharInput = section.querySelector('.separationChar');
                 config.SeparationCharacter = separationCharInput.value;
                 const endCharInput = section.querySelector('.endChar');
                 config.EndOfMessageCharacter = endCharInput.value;
             }
-            parameters[`String${index + 1}`] = config;
+            parameters[`String${index + 1} `] = config;
         });
 
         // Collect output format configuration
-        const outputOrderSelects = document.querySelectorAll('[id^="outputOrderSelect"]');
-        parameters.OutputFormat = Array.from(outputOrderSelects).map(select => select.value);
+        //const outputOrderSelects = document.querySelectorAll('[id^="outputOrderSelect"]');
+        //parameters.OutputFormat = Array.from(outputOrderSelects).map(select => select.value);
 
         // Collect output string format
         const formatStringInput = document.getElementById('formatString');
@@ -263,39 +301,52 @@ document.addEventListener('DOMContentLoaded', function () {
     function updateStringConfigurations(importedData) {
         const stringConfigs = document.querySelectorAll('.stringConfig');
         stringConfigs.forEach((section, index) => {
-            const config = importedData[`String${index + 1}`];
+            const config = importedData[`String${index + 1} `];
             if (config) {
                 const sensorTypeSelect = section.querySelector('.sensorTypeSelect');
                 sensorTypeSelect.value = config.SensorType;
                 if (config.SensorType === 'DS18B20') {
                     const quantityOfSignalsInput = section.querySelector('.qtySignals');
                     quantityOfSignalsInput.value = config.QuantityOfSignals;
-                    updateDeviceAddresses(section, config.DeviceAddresses);
+                    updateDeviceAddresses(section, config);
                 } else {
                     const separationCharInput = section.querySelector('.separationChar');
                     separationCharInput.value = config.SeparationCharacter;
                     const endCharInput = section.querySelector('.endChar');
                     endCharInput.value = config.EndOfMessageCharacter;
                 }
+                const deviceAddresses = section.querySelector('.deviceAddresses');
+                const serialConfig = section.querySelector('.serialConfig');
+
+                /*quantityOfSignals.style.display = (sensorType === 'DS18B20') ? 'block' : 'none';*/
+                deviceAddresses.style.display = (config.SensorType === 'DS18B20') ? 'block' : 'none';
+                serialConfig.style.display = (config.SensorType === 'serial') ? 'inline-flex' : 'none';
             }
         });
+
     }
 
     // Function to update device addresses
-    function updateDeviceAddresses(section, addresses) {
-        addDeviceAddressInputs(section, addresses.length)
-        const deviceAddressesInputs = section.querySelectorAll('.deviceAddresses input');
-        addresses.forEach((address, i) => {
-            deviceAddressesInputs[i].value = address;
+    function updateDeviceAddresses(section, config) {
+        addDeviceAddressInputs(section, config.Addresses.length)
+        const nameInputs = section.querySelectorAll('.input-row input[name="sensor"]');
+        const addressInputs = section.querySelectorAll('.input-row input[name="address"]');
+        const MInputs = section.querySelectorAll('.input-row input[name="m"]');
+        const HInputs = section.querySelectorAll('.input-row input[name="h"]');
+        config.Addresses.forEach((address, i) => {
+            nameInputs[i].value = config.Names[i];
+            addressInputs[i].value = config.Addresses[i];
+            MInputs[i].value = config.M[i];
+            HInputs[i].value = config.H[i];
         });
     }
 
     // Function to update output format
     function updateOutputFormat(importedData) {
-        const outputOrderSelects = document.querySelectorAll('[id^="outputOrderSelect"]');
-        importedData.OutputFormat.forEach((value, i) => {
-            outputOrderSelects[i].value = value;
-        });
+        // const outputOrderSelects = document.querySelectorAll('[id^="outputOrderSelect"]');
+        // importedData.OutputFormat.forEach((value, i) => {
+        //     outputOrderSelects[i].value = value;
+        // });
     }
 
     // Function to update output string format
