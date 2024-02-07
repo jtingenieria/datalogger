@@ -20,6 +20,9 @@ typedef struct
     char delimiter_char;
     char end_char;
     onewire_device_address_t * device_addr;
+    char * sensor_names;
+    float * m;
+    float * h;
 } string_config_t;
 
 esp_err_t configuration_manager_import_config(string_config_t * strings_config);

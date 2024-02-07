@@ -125,7 +125,7 @@ static void logger_task(void *pvParams)
     				for (int j = 0 ; j < strings_config[i].quantity_of_signals; j++)
     				{
 						sensor_data = ds18b20_manager_get_temp(assigned_number[i], j);
-
+						sensor_data = strings_config[i].m[j] * sensor_data + strings_config[i].h[j];
 						sprintf(data, "%.2f, ", sensor_data);
 						strcat(data_line, data);
 						esp_now_packet->float_data_p[absolute_signal_position] = sensor_data;

@@ -8,16 +8,32 @@
 const char * TAG = "configuration_manager";
 
 #define NUMBER_OF_STRINGS 6
+#define MAX_NAME_LEN 40
 
 static bool reserve_address_memory(string_config_t * string_config, int number_of_addresses)
 {
-   string_config->device_addr = malloc(number_of_addresses * sizeof(onewire_device_address_t));
-   return (string_config->device_addr != NULL);
+    string_config->device_addr = malloc(number_of_addresses * sizeof(onewire_device_address_t));
+    if (string_config->device_addr == NULL) return false;
+
+   string_config->sensor_names = malloc(number_of_addresses * sizeof(char) * MAX_NAME_LEN);
+    if (string_config->sensor_names == NULL) return false;
+
+    string_config->m = malloc(number_of_addresses * sizeof(float));
+    if (string_config->m == NULL) return false;
+
+    string_config->h = malloc(number_of_addresses * sizeof(float));
+    if (string_config->h == NULL) return false;
+
+    return true;
 }
 
 static void free_address_memory(string_config_t * string_config)
 {
     free(string_config->device_addr);
+    free(string_config->sensor_names);
+    free(string_config->m);
+    free(string_config->h);
+
 }
 
 static bool str_eq(char * string_1, char * string_2)
@@ -35,6 +51,12 @@ static int configuration_manager_parse_string(char ** const config, string_confi
     const cJSON *end_char = NULL;
     const cJSON *device_address = NULL;
     const cJSON *device_addresses = NULL;
+    const cJSON *device_names = NULL;
+    const cJSON *device_name = NULL;
+    const cJSON *device_hs = NULL;
+    const cJSON *device_ms = NULL;
+    const cJSON *device_h = NULL;
+    const cJSON *device_m = NULL;
     const cJSON *quantity_of_signals = NULL;
     const cJSON *sensor_type = NULL;
     const cJSON *string_json = NULL;
@@ -88,14 +110,40 @@ static int configuration_manager_parse_string(char ** const config, string_confi
 
                         reserve_address_memory(&(strings_config[i]),strings_config[i].quantity_of_signals);
 
-                        device_addresses = cJSON_GetObjectItemCaseSensitive(string_json, "DeviceAddresses");
+                        device_addresses = cJSON_GetObjectItemCaseSensitive(string_json, "Addresses");
                         int j = 0;
                         cJSON_ArrayForEach(device_address, device_addresses)
                         {
                             char *end;
                             strings_config[i].device_addr[j] = strtoull(device_address->valuestring, &end, 16);
-                            //sscanf(device_address->valuestring, "%" SCNx64, &(strings_config[i].device_addr[j]));
                             ESP_LOGD(TAG, "Address[%d][%d] = %016llX", i,j, strings_config[i].device_addr[j]);
+                            j++;
+                        }
+
+                        device_names = cJSON_GetObjectItemCaseSensitive(string_json, "Names");
+                        j = 0;
+                        cJSON_ArrayForEach(device_name, device_names)
+                        {
+                            strncpy((char *)(strings_config[i].sensor_names) + j * MAX_NAME_LEN, device_address->valuestring, MAX_NAME_LEN);
+                            ESP_LOGD(TAG, "Name[%d][%d] = %s", i,j, (char *)(strings_config[i].sensor_names) + j * MAX_NAME_LEN);
+                            j++;
+                        }
+
+                        device_ms = cJSON_GetObjectItemCaseSensitive(string_json, "M");
+                        j = 0;
+                        cJSON_ArrayForEach(device_m, device_ms)
+                        {
+                            strings_config[i].m[j] = atof(device_m->valuestring);
+                            ESP_LOGD(TAG, "M[%d][%d] = %.5f", i,j,  strings_config[i].m[j]);
+                            j++;
+                        }
+
+                        device_hs = cJSON_GetObjectItemCaseSensitive(string_json, "H");
+                        j = 0;
+                        cJSON_ArrayForEach(device_h, device_hs)
+                        {
+                            strings_config[i].h[j] = atof(device_h->valuestring);
+                            ESP_LOGD(TAG, "H[%d][%d] = %.5f", i,j,  strings_config[i].h[j]);
                             j++;
                         }
                     }
