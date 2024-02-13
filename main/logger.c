@@ -58,6 +58,7 @@ TaskHandle_t external_task_handle = NULL;
 #define MAX_DEVICES_S3_STRING 1
 
 static esp_packet_t * esp_now_packet;
+RTC_DATA_ATTR static uint8_t display_packet[250];
 RTC_DATA_ATTR static int esp_now_id = 0;
 
 string_config_t strings_config[NUMBER_OF_STRINGS] = {0};
@@ -236,6 +237,19 @@ static void logger_task(void *pvParams)
 
     xLastWakeTime = xTaskGetTickCount();
 
+//    for (int i = 0; i < absolute_signal_position -1; i++)
+//    {
+//    	ESP_LOGD(TAG, "esp_now[%d]: %.2f",i, esp_now_packet->float_data_p[i]);
+//    }
+//
+//    for (int i = 0; i < esp_now_packet->size_of_packet; i++)
+//    {
+//    	printf("%x ", (uint8_t) ((uint8_t*)esp_now_packet)[i]);
+//    }
+
+    memset(display_packet, 0, sizeof(display_packet));
+    memcpy(display_packet, esp_now_packet, esp_now_packet->size_of_packet);
+
     for (int i = 0; i < 5; i++)
     {
         esp_now_module_send(esp_now_packet, esp_now_packet->size_of_packet);
@@ -276,6 +290,46 @@ static void logger_task(void *pvParams)
     vTaskDelete(NULL);
 }
 
+void logger_set_file_header(void)
+{
+	configuration_manager_import_config(strings_config);
+	esp_log_level_set(TAG, ESP_LOG_DEBUG);
+	char header_line[500];
+	char header_segment[50];
+	memset(header_line, 0, sizeof(header_line));
+
+	strcat(header_line,"Time,Date,");
+
+	for(int i = 0; i <  NUMBER_OF_STRINGS; i++)
+	{
+		ESP_LOGD(TAG, "Quantity of %d is %d", i, strings_config[i].quantity_of_signals);
+
+		for(int j = 0 ; j < strings_config[i].quantity_of_signals ; j++)
+		{
+			if(strings_config[i].sensor_names != NULL)
+			{
+				if(strings_config[i].sensor_names[j] != NULL)
+				{
+					sprintf(header_segment, "%s,",strings_config[i].sensor_names[j]);
+				}
+				else
+				{
+					sprintf(header_segment, "STR %d SIG %d,", i+1 , j+1);
+				}
+			}
+			else
+			{
+				sprintf(header_segment, "STR %d SIG %d,", i+1 , j+1);
+			}
+
+			strcat(header_line, header_segment);
+
+		}
+
+	}
+	strcat(header_line, "\n");
+	usb_sd_fs_write(header_line);
+}
 
 void logger_init(void)
 {
@@ -343,6 +397,10 @@ void logger_init(void)
     size_t s = sizeof (esp_packet_t) - sizeof(float *) + sizeof(float) * (total_signal_qty);
     esp_now_packet = malloc(s);
     esp_now_packet->size_of_packet = s;
+    esp_now_packet->float_data_qty = total_signal_qty;
+
+
+    ESP_LOGD(TAG, "Size of packet %d", (int) esp_now_packet->size_of_packet);
 
     esp_now_module_set_success_cb(set_esp_now_send_success);
 	esp_now_module_set_fail_cb(set_esp_now_send_fail);

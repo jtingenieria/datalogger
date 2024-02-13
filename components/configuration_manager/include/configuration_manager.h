@@ -20,7 +20,7 @@ typedef struct
     char delimiter_char;
     char end_char;
     onewire_device_address_t * device_addr;
-    char * sensor_names;
+    char ** sensor_names;
     float * m;
     float * h;
 } string_config_t;

@@ -166,6 +166,8 @@ static void init_logging(bool force_rename)
     if(!usb_sd_fs_is_filename_set() || force_rename)
     {
         set_filename_from_time();
+        usb_sd_fs_init_card();
+        logger_set_file_header();
     }
     esp_sleep_enable_timer_wakeup(0);
     esp_deep_sleep_start();

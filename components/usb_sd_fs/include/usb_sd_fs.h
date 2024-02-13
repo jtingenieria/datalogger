@@ -36,4 +36,6 @@ bool usb_sd_fs_is_filename_set(void);
 
 usb_sd_fs_err_t usb_sd_fs_read_file(char * file_name, char **data_out, long * read_size);
 
+usb_sd_fs_err_t usb_sd_fs_write_new_device(char *data);
+
 #endif

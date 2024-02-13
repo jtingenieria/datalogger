@@ -48,6 +48,7 @@ select:focus {
     width: 100%;
 }
 
+.uart-signal-container,
 .sensor-container {
     width: 100%;
     margin-bottom: 10px;
@@ -74,16 +75,17 @@ select:focus {
 }
 
 #calibrationM {
-    width: 80px;
+    width: 100px;
     /* Adjust width as needed */
 }
 
 /* Custom width for Calibration H */
 #calibrationH {
-    width: 80px;
+    width: 100px;
     /* Adjust width as needed */
 }
 
+#outputFormat,
 .stringConfig {
     margin-left: auto;
     margin-right: auto;
@@ -97,24 +99,24 @@ select:focus {
 
 .quantityOfSignals {
     margin-bottom: 20px;
+    display: inline-flex;
 }
 
 .sensorType {
     display: inline-flex;
 }
 
-.quantityOfSignals {
-    display: inline-flex;
-}
 
 .serialConfig {
     margin-bottom: 20px;
 }
 
-.serialConfig input {
+.uart_config input {
     width: 50px;
 }
 
+#outputFormat label,
+.uartNames label, 
 .serialConfig label,
 .quantityOfSignals label,
 .sensorType label {
@@ -124,4 +126,15 @@ select:focus {
     text-align: right;
     padding: 5px;
     margin-left: 10px;
+}
+
+#outputFormatString
+{
+    display: inline-flex;
+    padding-bottom: 20px;
+}
+
+.uart_config{
+    display: inline-flex;
+    padding-bottom: 10px;
 }

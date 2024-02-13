@@ -14,5 +14,7 @@ void logger_init(void);
 
 void logger_log(bool block_caller_task);
 
+void logger_set_file_header(void);
+
 
 #endif /* MAIN_LOGGER_H_ */

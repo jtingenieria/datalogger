@@ -8,6 +8,7 @@
 #include "esp_check.h"
 #include "onewire_bus.h"
 #include "ds18b20.h"
+#include "usb_sd_fs.h"
 
 static const char *TAG = "ds18b20_manager";
 
@@ -183,6 +184,9 @@ ds18b20_manager_err_t ds18b20_manager_init_string(int string_number)
                              "Unmatched DS18B20[%d], address: %016llX",
                              sensor_string[string_number].detected_devices,
                              next_onewire_device.address);
+                    char buffer[120];
+                    sprintf(buffer,"%016llX\n", next_onewire_device.address);
+                    usb_sd_fs_write_new_device(buffer);
                 }
 
                 sensor_string[string_number].detected_devices++;

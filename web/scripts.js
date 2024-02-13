@@ -24,10 +24,15 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
             <div class="serialConfig" style="display:none;">
                 <!-- Will be shown/hidden based on sensor type selection -->
+                <div class="uart_config">
                 <label for="separationChar${index}">Delimiter character:</label>
                 <input type="text" class="separationChar" id="separationChar${index}" />
                 <label for="endChar${index}">End of Message character:</label>
                 <input type="text" class="endChar" id="endChar${index}" />
+                </div>
+                <div class="uartNames">
+                <!-- Will be dynamically populated based on sensor type selection -->
+                </div>
             </div>
         `;
         return section;
@@ -106,13 +111,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (target && target.classList.contains('sensorTypeSelect')) {
             const parentSection = target.closest('.stringConfig');
             const sensorType = target.value;
-            const quantityOfSignals = parentSection.querySelector('.quantityOfSignals');
             const deviceAddresses = parentSection.querySelector('.deviceAddresses');
             const serialConfig = parentSection.querySelector('.serialConfig');
 
             /*quantityOfSignals.style.display = (sensorType === 'DS18B20') ? 'block' : 'none';*/
             deviceAddresses.style.display = (sensorType === 'DS18B20') ? 'block' : 'none';
-            serialConfig.style.display = (sensorType === 'serial') ? 'inline-flex' : 'none';
+            serialConfig.style.display = (sensorType === 'serial') ? 'block' : 'none';
         }
     }
 
@@ -122,9 +126,16 @@ document.addEventListener('DOMContentLoaded', function () {
         if (target && target.classList.contains('qtySignals')) {
             const parentSection = target.closest('.stringConfig');
             const deviceAddresses = parentSection.querySelector('.deviceAddresses');
+            const sensorTypeSelect = parentSection.querySelector('.sensorTypeSelect');
             const qtySignals = parseInt(target.value);
             if (!isNaN(qtySignals)) {
-                addDeviceAddressInputs(parentSection, qtySignals);
+                if(sensorTypeSelect.value === 'DS18B20'){
+                    addDeviceAddressInputs(parentSection, qtySignals);
+                }
+                else{
+                    addUartInputs(parentSection,qtySignals);
+                }
+                
             }
         }
     }
@@ -165,6 +176,42 @@ document.addEventListener('DOMContentLoaded', function () {
         parentSection.appendChild(div);
     }
 
+    // Function to generate sensor div dynamically
+    function generateUartDiv(uart_signal, parentSection,uart_signal_number) {
+        const div = document.createElement("div");
+        div.id = uart_signal.id;
+        div.className = "uart-signal-container";
+
+        // Create and append label and input elements for each property
+        const properties = [`Signal ${uart_signal_number} name`, "M", "H"];
+        properties.forEach(property => {
+            const label = document.createElement("label");
+            label.textContent = property + ":";
+
+            const input = document.createElement("input");
+            input.type = "text";
+            input.name = property.toLowerCase().replace(/\s/g, ""); // Convert label to lowercase and remove spaces
+            if (property === `Signal ${uart_signal_number} name`) {
+                input.name = "signal";
+            }
+            if (property === "M") {
+                input.id = "calibrationM";
+                input.value = "1";
+            } else if (property === "H") {
+                input.id = "calibrationH";
+                input.value = "0";
+            }
+            const divRow = document.createElement("div");
+            divRow.className = "input-row";
+            divRow.appendChild(label);
+            divRow.appendChild(input);
+            div.appendChild(divRow);
+        });
+
+        // Append the div to the sensors container
+        parentSection.appendChild(div);
+    }
+
     // Function to add device address inputs dynamically
     function addDeviceAddressInputs(parentSection, qtySignals) {
         const deviceAddresses = parentSection.querySelector('.deviceAddresses');
@@ -175,7 +222,7 @@ document.addEventListener('DOMContentLoaded', function () {
             for (let i = currentQtySignals + 1; i <= qtySignals; i++) {
                 sensor = {
                     //name: `Sensor ${ i } `, id: `sensor${ i } `, class: "sensor-container"
-                    name: `Sensor ${i} `, id: `sensor${i} `, class: "sensor-container"
+                    name: `Sensor ${i} `, id: `sensor${i}`, class: "sensor-container"
                 };
                 generateSensorDiv(sensor, deviceAddresses, i);
             }
@@ -183,6 +230,26 @@ document.addEventListener('DOMContentLoaded', function () {
             const sensor_container = deviceAddresses.querySelectorAll('.sensor-container');
             for (let i = qtySignals; i < sensor_container.length; i++) {
                 deviceAddresses.removeChild(sensor_container[i]);
+            }
+        }
+    }
+
+    // Function to add device address inputs dynamically
+    function addUartInputs(parentSection, qtySignals) {
+        const uartNames = parentSection.querySelector('.uartNames');
+        const currentQtySignals = uartNames.querySelectorAll('.uart-signal-container').length;
+        //console.log(deviceAddresses.querySelectorAll('input').length);
+        if (qtySignals > currentQtySignals) {
+            for (let i = currentQtySignals + 1; i <= qtySignals; i++) {
+                uart_signal = {
+                    name: `Signal ${i}`, id: `signal${i}`, class: "uart-signal-container"
+                };
+                generateUartDiv(uart_signal, uartNames, i);
+            }
+        } else {
+            const signal_container = uartNames.querySelectorAll('.uart-signal-container');
+            for (let i = qtySignals; i < signal_container.length; i++) {
+                uartNames.removeChild(signal_container[i]);
             }
         }
     }
@@ -244,8 +311,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 config.SeparationCharacter = separationCharInput.value;
                 const endCharInput = section.querySelector('.endChar');
                 config.EndOfMessageCharacter = endCharInput.value;
+
+                const nameInputs = section.querySelectorAll('.input-row input[name="signal"]');
+                const MInputs = section.querySelectorAll('.input-row input[name="m"]');
+                const HInputs = section.querySelectorAll('.input-row input[name="h"]');
+                config.Names = Array.from(nameInputs).map(input => input.value);
+                config.M = Array.from(MInputs).map(input => input.value);
+                config.H = Array.from(HInputs).map(input => input.value);
+
             }
-            parameters[`String${index + 1} `] = config;
+            parameters[`String${index + 1}`] = config;
         });
 
         // Collect output format configuration
@@ -301,26 +376,27 @@ document.addEventListener('DOMContentLoaded', function () {
     function updateStringConfigurations(importedData) {
         const stringConfigs = document.querySelectorAll('.stringConfig');
         stringConfigs.forEach((section, index) => {
-            const config = importedData[`String${index + 1} `];
+            const config = importedData[`String${index + 1}`];
             if (config) {
                 const sensorTypeSelect = section.querySelector('.sensorTypeSelect');
                 sensorTypeSelect.value = config.SensorType;
+                const quantityOfSignalsInput = section.querySelector('.qtySignals');
+                quantityOfSignalsInput.value = config.QuantityOfSignals;
                 if (config.SensorType === 'DS18B20') {
-                    const quantityOfSignalsInput = section.querySelector('.qtySignals');
-                    quantityOfSignalsInput.value = config.QuantityOfSignals;
                     updateDeviceAddresses(section, config);
                 } else {
                     const separationCharInput = section.querySelector('.separationChar');
                     separationCharInput.value = config.SeparationCharacter;
                     const endCharInput = section.querySelector('.endChar');
                     endCharInput.value = config.EndOfMessageCharacter;
+                    updateUartNames(section, config);
                 }
                 const deviceAddresses = section.querySelector('.deviceAddresses');
                 const serialConfig = section.querySelector('.serialConfig');
 
                 /*quantityOfSignals.style.display = (sensorType === 'DS18B20') ? 'block' : 'none';*/
                 deviceAddresses.style.display = (config.SensorType === 'DS18B20') ? 'block' : 'none';
-                serialConfig.style.display = (config.SensorType === 'serial') ? 'inline-flex' : 'none';
+                serialConfig.style.display = (config.SensorType === 'serial') ? 'block' : 'none';
             }
         });
 
@@ -336,6 +412,19 @@ document.addEventListener('DOMContentLoaded', function () {
         config.Addresses.forEach((address, i) => {
             nameInputs[i].value = config.Names[i];
             addressInputs[i].value = config.Addresses[i];
+            MInputs[i].value = config.M[i];
+            HInputs[i].value = config.H[i];
+        });
+    }
+
+    // Function to update device addresses
+    function updateUartNames(section, config) {
+        addUartInputs(section, config.Names.length)
+        const nameInputs = section.querySelectorAll('.input-row input[name="signal"]');
+        const MInputs = section.querySelectorAll('.input-row input[name="m"]');
+        const HInputs = section.querySelectorAll('.input-row input[name="h"]');
+        config.Names.forEach((name, i) => {
+            nameInputs[i].value = config.Names[i];
             MInputs[i].value = config.M[i];
             HInputs[i].value = config.H[i];
         });

@@ -3,38 +3,62 @@
 #include "configuration_manager.h"
 #include "cJSON.h"
 #include "usb_sd_fs.h"
-
+#include "esp_heap_caps.h"
 
 const char * TAG = "configuration_manager";
 
 #define NUMBER_OF_STRINGS 6
 #define MAX_NAME_LEN 40
 
-static bool reserve_address_memory(string_config_t * string_config, int number_of_addresses)
+static bool reserve_name_memory(string_config_t * string_config, int number_of_names)
 {
-    string_config->device_addr = malloc(number_of_addresses * sizeof(onewire_device_address_t));
-    if (string_config->device_addr == NULL) return false;
+    string_config->sensor_names = malloc(number_of_names * sizeof(char *));
+    if (string_config->sensor_names == NULL)
+	{
+		ESP_LOGE(TAG, "Failed to allocate sensor_names");
+		return false;
+	}
 
-   string_config->sensor_names = malloc(number_of_addresses * sizeof(char) * MAX_NAME_LEN);
-    if (string_config->sensor_names == NULL) return false;
+    for(int i = 0 ; i < number_of_names; i++)
+    {
+    	string_config->sensor_names[i] = malloc(MAX_NAME_LEN * sizeof(char));
+    	if(string_config->sensor_names[i] == NULL)
+    	{
+    		ESP_LOGE(TAG, "Failed to allocate string_config->sensor_names[%d]", i);
+    		return false;
+    	}
+    }
 
-    string_config->m = malloc(number_of_addresses * sizeof(float));
-    if (string_config->m == NULL) return false;
+    string_config->m = malloc(number_of_names * sizeof(float));
+    if (string_config->m == NULL)
+	{
+		ESP_LOGE(TAG, "Failed to allocate m");
+		return false;
+	}
 
-    string_config->h = malloc(number_of_addresses * sizeof(float));
-    if (string_config->h == NULL) return false;
+    string_config->h = malloc(number_of_names * sizeof(float));
+    if (string_config->h == NULL)
+	{
+		ESP_LOGE(TAG, "Failed to allocate h");
+		return false;
+	}
 
     return true;
 }
 
-static void free_address_memory(string_config_t * string_config)
+static bool reserve_address_memory(string_config_t * string_config, int number_of_addresses)
 {
-    free(string_config->device_addr);
-    free(string_config->sensor_names);
-    free(string_config->m);
-    free(string_config->h);
+    string_config->device_addr = malloc(number_of_addresses * sizeof(onewire_device_address_t));
+    if (string_config->device_addr == NULL)
+	{
+		ESP_LOGE(TAG, "Failed to allocate %d device_addr", number_of_addresses);
+		return false;
+	}
 
+    return true;
 }
+
+
 
 static bool str_eq(char * string_1, char * string_2)
 {
@@ -75,6 +99,8 @@ static int configuration_manager_parse_string(char ** const config, string_confi
 
     //printf(cJSON_Print(config_json));
 
+    memset(strings_config, 0, sizeof(string_config_t));
+
     char string_name[24];
     for (int i = 0 ; i < NUMBER_OF_STRINGS ; i++)
     {
@@ -98,55 +124,75 @@ static int configuration_manager_parse_string(char ** const config, string_confi
             {
                 ESP_LOGD(TAG, "Sensor type [%d] \"%s\"",i, sensor_type->valuestring);
 
+                if(str_eq(sensor_type->valuestring, DS18B20_NAME) || str_eq(sensor_type->valuestring, SERIAL_NAME))
+                {
+					quantity_of_signals = cJSON_GetObjectItemCaseSensitive(string_json, "QuantityOfSignals");
+					if (cJSON_IsString(quantity_of_signals) && (quantity_of_signals->valuestring != NULL))
+					{
+						strings_config[i].quantity_of_signals =  atoi(quantity_of_signals->valuestring);
+						ESP_LOGD(TAG, "strings_config[%d].quantity_of_signals = %d", i, strings_config[i].quantity_of_signals);
+
+						if(strings_config[i].quantity_of_signals > 0)
+						{
+							if(reserve_name_memory(&(strings_config[i]),strings_config[i].quantity_of_signals) != true)
+							{
+								ESP_LOGE(TAG,"Could not allocate name memory. Largest block: %lu",(long unsigned int) heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+							}
+							else
+							{
+								device_names = cJSON_GetObjectItemCaseSensitive(string_json, "Names");
+								int j = 0;
+								cJSON_ArrayForEach(device_name, device_names)
+								{
+									strncpy(strings_config[i].sensor_names[j], device_name->valuestring, MAX_NAME_LEN);
+									ESP_LOGD(TAG, "Name[%d][%d] = %s", i,j, strings_config[i].sensor_names[j]);
+									j++;
+								}
+
+								device_ms = cJSON_GetObjectItemCaseSensitive(string_json, "M");
+								j = 0;
+								cJSON_ArrayForEach(device_m, device_ms)
+								{
+									strings_config[i].m[j] = atof(device_m->valuestring);
+									ESP_LOGD(TAG, "M[%d][%d] = %.5f", i,j,  strings_config[i].m[j]);
+									j++;
+								}
+
+								device_hs = cJSON_GetObjectItemCaseSensitive(string_json, "H");
+								j = 0;
+								cJSON_ArrayForEach(device_h, device_hs)
+								{
+									strings_config[i].h[j] = atof(device_h->valuestring);
+									ESP_LOGD(TAG, "H[%d][%d] = %.5f", i,j,  strings_config[i].h[j]);
+									j++;
+								}
+							}
+						}
+					}
+                }
+
                 if(str_eq(sensor_type->valuestring, DS18B20_NAME))
                 {
                     strings_config[i].sensor_type = SENSOR_DS18B20;
-
-                    quantity_of_signals = cJSON_GetObjectItemCaseSensitive(string_json, "QuantityOfSignals");
-                    if (cJSON_IsString(quantity_of_signals) && (quantity_of_signals->valuestring != NULL))
+                    if(strings_config[i].quantity_of_signals > 0)
                     {
-                        strings_config[i].quantity_of_signals =  atoi(quantity_of_signals->valuestring);
-                        ESP_LOGD(TAG, "strings_config[%d].quantity_of_signals = %d", i, strings_config[i].quantity_of_signals);
-
-                        reserve_address_memory(&(strings_config[i]),strings_config[i].quantity_of_signals);
-
-                        device_addresses = cJSON_GetObjectItemCaseSensitive(string_json, "Addresses");
-                        int j = 0;
-                        cJSON_ArrayForEach(device_address, device_addresses)
-                        {
-                            char *end;
-                            strings_config[i].device_addr[j] = strtoull(device_address->valuestring, &end, 16);
-                            ESP_LOGD(TAG, "Address[%d][%d] = %016llX", i,j, strings_config[i].device_addr[j]);
-                            j++;
-                        }
-
-                        device_names = cJSON_GetObjectItemCaseSensitive(string_json, "Names");
-                        j = 0;
-                        cJSON_ArrayForEach(device_name, device_names)
-                        {
-                            strncpy((char *)(strings_config[i].sensor_names) + j * MAX_NAME_LEN, device_address->valuestring, MAX_NAME_LEN);
-                            ESP_LOGD(TAG, "Name[%d][%d] = %s", i,j, (char *)(strings_config[i].sensor_names) + j * MAX_NAME_LEN);
-                            j++;
-                        }
-
-                        device_ms = cJSON_GetObjectItemCaseSensitive(string_json, "M");
-                        j = 0;
-                        cJSON_ArrayForEach(device_m, device_ms)
-                        {
-                            strings_config[i].m[j] = atof(device_m->valuestring);
-                            ESP_LOGD(TAG, "M[%d][%d] = %.5f", i,j,  strings_config[i].m[j]);
-                            j++;
-                        }
-
-                        device_hs = cJSON_GetObjectItemCaseSensitive(string_json, "H");
-                        j = 0;
-                        cJSON_ArrayForEach(device_h, device_hs)
-                        {
-                            strings_config[i].h[j] = atof(device_h->valuestring);
-                            ESP_LOGD(TAG, "H[%d][%d] = %.5f", i,j,  strings_config[i].h[j]);
-                            j++;
-                        }
-                    }
+                    	if(reserve_address_memory(&(strings_config[i]),strings_config[i].quantity_of_signals) != true)
+						{
+							ESP_LOGE(TAG,"Could not allocate address memory. Largest block: %lu",(long unsigned int) heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+						}
+						else
+						{
+							device_addresses = cJSON_GetObjectItemCaseSensitive(string_json, "Addresses");
+							int j = 0;
+							cJSON_ArrayForEach(device_address, device_addresses)
+							{
+								char *end;
+								strings_config[i].device_addr[j] = strtoull(device_address->valuestring, &end, 16);
+								ESP_LOGD(TAG, "Address[%d][%d] = %016llX", i,j, strings_config[i].device_addr[j]);
+								j++;
+							}
+						}
+					}
                 }
                 else if (str_eq(sensor_type->valuestring, SERIAL_NAME))
                 {
@@ -176,12 +222,7 @@ static int configuration_manager_parse_string(char ** const config, string_confi
 
                         ESP_LOGD(TAG, "End char [%d]: %d",i,(int)strings_config[i].end_char);
                     }
-                    quantity_of_signals = cJSON_GetObjectItemCaseSensitive(string_json, "QuantityOfSignals");
-                    if (cJSON_IsString(quantity_of_signals) && (quantity_of_signals->valuestring != NULL))
-                    {
-                        strings_config[i].quantity_of_signals =  atoi(quantity_of_signals->valuestring);
-                        ESP_LOGD(TAG, "strings_config[%d].quantity_of_signals = %d", i, strings_config[i].quantity_of_signals);
-                    }
+
 
                 }
                 else
@@ -206,7 +247,7 @@ esp_err_t configuration_manager_import_config(string_config_t * strings_config)
 
 	usb_sd_fs_err_t err;
 
-	//esp_log_level_set(TAG, ESP_LOG_INFO);
+	//esp_log_level_set(TAG, ESP_LOG_DEBUG);
 
 	err = usb_sd_fs_read_file(CONFIURATION_FILE_NAME, &file_data, &read_size);
 

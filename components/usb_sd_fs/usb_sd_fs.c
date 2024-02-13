@@ -227,6 +227,18 @@ usb_sd_fs_err_t usb_sd_fs_write(char *data)
 
 }
 
+usb_sd_fs_err_t usb_sd_fs_write_new_device(char *data)
+{
+    usb_sd_fs_err_t err = USB_SD_FS_OTHER_ERR;
+
+    if (strlen(data) != 0)
+    {
+        err = usb_sd_fs_write_file(BASE_PATH"/devices.txt", data);
+    }
+    return err;
+
+}
+
 usb_sd_fs_err_t usb_sd_fs_read_file(char * file_name,char **data_out , long * read_size)
 {
 
